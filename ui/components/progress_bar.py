@@ -6,6 +6,10 @@ from ui.icons import Icons
 
 def create_progress_bar(current: int, total: int, width: int = 18) -> str:
     """Generates a text/emoji-based progress bar."""
+    if width <= 0:
+        return ""
+    if width == 1:
+        return str(Icons.PB_START if (current <= 0 or total <= 0) else Icons.PB_END)
     if total <= 0:
         return f"{Icons.PB_START}{str(Icons.PB_EMPTY) * (width - 2)}{Icons.PB_RIGHT}"
     

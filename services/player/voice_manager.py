@@ -78,6 +78,14 @@ class VoiceManager:
             except Exception:
                 pass
                 
+        if target_channel:
+            # Check for forbidden bots
+            for member in target_channel.members:
+                if member.bot and member.id in self.config.forbidden_bot_ids:
+                    log.warning(f"[VOICE] Forbidden bot {member.name} ({member.id}) detected in {target_channel.name}. Aborting switch.")
+                    return False
+
+        self.radio.voice_channel_id = target_channel_id
         if target_channel and voice and voice.is_connected():
             log.info(f"[VOICE] Moving voice client to {target_channel.name}")
             await voice.move_to(target_channel)

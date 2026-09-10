@@ -126,7 +126,10 @@ class RadioPlayer:
                 self.radio.history_ptr = 0
             else:
                 if self.radio.loop_queue_mode and self.radio.current_song and not self.radio.is_navigating:
-                    self.radio.current_song = self.radio.queue.pop(0)
+                    # Single song in queue loop rotation; replay it safely
+                    log.info(f"[PLAYER] Loop Queue active with single track. Replaying: {self.radio.current_song.title}")
+                    self.radio.is_seeking = True
+                    self.radio.seek_position = 0
                 else:
                     if voice and voice.is_playing():
                         log.warning("[PLAYER] Queue empty but voice still playing. Delaying IDLE state.")

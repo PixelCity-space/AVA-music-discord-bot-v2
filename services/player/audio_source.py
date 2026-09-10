@@ -72,7 +72,8 @@ class AudioSourceFactory:
                 ua = user_agent
 
             if ua:
-                before_opts_list.append(f"-user_agent \"{ua}\"")
+                safe_ua = str(ua).replace('"', '')
+                before_opts_list.append(f'-user_agent "{safe_ua}"')
             if reconnect_opts:
                 before_opts_list.append(reconnect_opts)
             
@@ -84,7 +85,8 @@ class AudioSourceFactory:
             before_opts_list.extend(["-analyzeduration 0", "-probesize 32k"])
         
         before_opts = " ".join(before_opts_list)
-        filter_chain = f"volume={volume}"
+        safe_volume = max(0.0, float(volume if volume is not None else 0.5))
+        filter_chain = f"volume={safe_volume}"
         options = f'-vn -filter:a "{filter_chain}" -c:a libopus -b:a {self.config.audio_bitrate} -ar 48000 -ac 2 -f opus -threads 2'
         
         return discord.FFmpegOpusAudio(

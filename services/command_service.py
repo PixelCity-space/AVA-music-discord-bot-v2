@@ -96,6 +96,12 @@ class CommandService:
         except Exception:
             return CommandResult(feedback=get_feedback("format_error"), success=False)
 
+        if total_seconds < 0:
+            return CommandResult(feedback=get_feedback("format_error"), success=False)
+
+        if self.radio.current_song.duration > 0 and total_seconds > self.radio.current_song.duration:
+            return CommandResult(feedback=get_feedback("too_long"), success=False)
+
         self.radio.dispatch(RadioAction.SEEK, total_seconds, user=user)
         return CommandResult(feedback=f"{get_feedback('jumping')} {time_str}")
 

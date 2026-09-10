@@ -244,12 +244,18 @@ class Database:
             return
         try:
             now_iso = datetime.now().isoformat()
+            def _parse_duration(val):
+                try:
+                    return max(0, int(val or 0))
+                except (ValueError, TypeError):
+                    return 0
+
             rows = [
                 (
                     d.get("url") or d.get("path"),
                     d.get("title", ""),
                     d.get("uploader", "Unknown"),
-                    int(d.get("duration", 0)),
+                    _parse_duration(d.get("duration")),
                     d.get("thumbnail_url", ""),
                     d.get("local_path"),
                     now_iso
@@ -338,6 +344,8 @@ class Database:
 
     def get_history_latest(self, offset: int = 0) -> Optional[Song]:
         """Returns the history entry at the given offset (0 = latest) without deleting."""
+        if offset < 0:
+            return None
         try:
             with self._get_connection() as conn:
                 conn.row_factory = sqlite3.Row

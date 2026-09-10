@@ -1,3 +1,4 @@
+import ipaddress
 import os
 import re
 from urllib.parse import urlparse
@@ -41,9 +42,25 @@ class TrackResolverService:
             if parsed.scheme.lower() not in cls.ALLOWED_SCHEMES:
                 log.warning(f"[SECURITY] Disallowed URL scheme in query: {parsed.scheme}")
                 return None
-            if not parsed.netloc:
+            
+            hostname = (parsed.hostname or "").lower()
+            if not hostname:
                 log.warning(f"[SECURITY] Invalid URL host in query: {cleaned}")
                 return None
+
+            # Reject localhost, single-label local hostnames, or loopback identifiers
+            if hostname in {"localhost", "0.0.0.0", "::1"} or "." not in hostname:
+                log.warning(f"[SECURITY] Disallowed local/private host in query: {hostname}")
+                return None
+
+            try:
+                ip = ipaddress.ip_address(hostname)
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    log.warning(f"[SECURITY] Disallowed private/reserved IP host in query: {hostname}")
+                    return None
+            except ValueError:
+                # Regular domain name with dot(s)
+                pass
 
         return cleaned
 

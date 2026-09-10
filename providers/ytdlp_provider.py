@@ -83,7 +83,7 @@ class YTDLPProvider(MusicProvider):
                 "title": info.get("title", "Unknown Title"),
                 "uploader": info.get("uploader") or info.get("channel") or info.get("artist") or "Unknown Artist",
                 "album": info.get("extractor_key", "Web Stream"),
-                "duration": int(info.get("duration", 0)),
+                "duration": max(0, int(info.get("duration") or 0)),
                 "stream_url": stream_url,
                 "thumbnail_url": info.get("thumbnail"),
                 "http_headers": info.get("http_headers", {}),
@@ -136,7 +136,7 @@ class YTDLPProvider(MusicProvider):
                     results.append({
                         "title": info.get("title", "Unknown Title"),
                         "uploader": info.get("uploader") or info.get("channel") or info.get("artist") or "Unknown Artist",
-                        "duration": int(info.get("duration", 0)),
+                        "duration": max(0, int(info.get("duration") or 0)),
                         "path": info.get("url") or info.get("webpage_url"),
                         "thumbnail_url": info.get("thumbnail"),
                         "is_external": True,
@@ -187,7 +187,7 @@ class YTDLPProvider(MusicProvider):
                         results.append({
                             "title": info.get("title", "Unknown"),
                             "uploader": info.get("uploader") or info.get("channel") or "Unknown",
-                            "duration": int(info.get("duration", 0)),
+                            "duration": max(0, int(info.get("duration") or 0)),
                             "path": info.get("url") or info.get("webpage_url"),
                             "thumbnail_url": info.get("thumbnail"),
                             "is_external": True

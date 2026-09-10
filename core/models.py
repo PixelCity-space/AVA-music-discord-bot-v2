@@ -39,7 +39,7 @@ class Song:
             title=data.get("title"),
             path=data.get("path") or data.get("url", ""),
             uploader=uploader,
-            duration=int(data.get("duration", 0)),
+            duration=max(0, int(data.get("duration") or 0)),
             thumbnail_url=data.get("thumbnail_url") or data.get("thumbnail"),
             webpage_url=data.get("webpage_url"),
             source=data.get("source"),
@@ -86,7 +86,7 @@ class Song:
 
     def cache_to_db(self, db, local_path: Optional[str] = None):
         """Persists the song metadata to SQLite cache using the provided Database instance."""
-        if not self.path or not db:
+        if not self.path or not self.path.strip() or not db:
             return
         db.set_cache(
             url=self.path,

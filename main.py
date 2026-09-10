@@ -50,6 +50,8 @@ async def main() -> int:
             await bot.start(config.token)
     except (asyncio.CancelledError, KeyboardInterrupt):
         log.info("Shutdown initiated by user/signal...")
+    except Exception as e:
+        log.critical(f"Fatal error during bot execution: {e}", exc_info=True)
     finally:
         restart_requested = (os.getenv("BOT_RESTART") == "1")
         os.environ["BOT_RESTART"] = "0"
@@ -57,22 +59,25 @@ async def main() -> int:
         if not bot.is_closed():
             await bot.close()
         log.info("Shutdown complete.")
-        logging.shutdown()
 
     if restart_requested:
         # If running under a supervisor (Docker, systemd, supervisord, etc.)
         if os.getenv("SUPERVISOR") == "1" or os.getenv("DOCKER") == "1":
             log.info("Exiting with restart code for process manager...")
+            logging.shutdown()
             return EXIT_CODE_RESTART
 
         # Standalone interactive restart
         log.info("Process restart initiated via execv...")
+        logging.shutdown()
         try:
             os.execv(sys.executable, [sys.executable] + sys.argv)
         except Exception as e:
-            log.error(f"os.execv failed: {e}. Exiting with code {EXIT_CODE_RESTART}")
+            # Note: execv replaces process, so if it reaches here it failed
+            print(f"os.execv failed: {e}. Exiting with code {EXIT_CODE_RESTART}", file=sys.stderr)
             return EXIT_CODE_RESTART
             
+    logging.shutdown()
     return 0
 
 if __name__ == "__main__":

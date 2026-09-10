@@ -142,9 +142,13 @@ def format_duration(seconds: int) -> str:
 
 def truncate(text: str | None, max_len: int) -> str:
     """Truncates text to max_len with ellipsis if it exceeds the limit."""
-    if not text:
+    if not text or max_len <= 0:
         return ""
-    return (text[:max_len - 3] + "...") if len(text) > max_len else text
+    if len(text) <= max_len:
+        return text
+    if max_len <= 3:
+        return text[:max_len]
+    return text[:max_len - 3] + "..."
 
 async def safe_delete_message(message: discord.Message | None):
     if not message:

@@ -15,7 +15,9 @@ class PrefetchService:
         self.prefetch_task: Optional[asyncio.Task] = None
 
     def reset(self):
-        """Resets the prefetch state between tracks."""
+        """Resets the prefetch state between tracks and cancels any in-flight task."""
+        if self.prefetch_task and not self.prefetch_task.done():
+            self.prefetch_task.cancel()
         self.prefetched_song = None
         self.prefetch_task = None
 

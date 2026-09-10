@@ -88,8 +88,8 @@ class PaginatedView(BaseView):
         super().__init__(radio, timeout=timeout)
         self.data_list = data_list
         self.items_per_page = items_per_page
-        self.current_page = page
         self.total_pages = max(1, (len(data_list) + items_per_page - 1) // items_per_page)
+        self.current_page = max(0, min(page, self.total_pages - 1))
 
     def get_page_items(self):
         start = self.current_page * self.items_per_page

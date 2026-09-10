@@ -21,10 +21,15 @@ class EmbedStateManager:
         return {}
 
     def save(self):
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(self.state, f)
+        try:
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump(self.state, f, default=str)
+        except Exception:
+            pass
 
     def save_message_id(self, key: str, message_id: int):
+        if not message_id or not isinstance(message_id, int) or message_id <= 0:
+            return
         self.state[f"msg_{key}"] = message_id
         self.save()
 

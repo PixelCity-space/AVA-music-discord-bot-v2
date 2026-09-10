@@ -258,6 +258,8 @@ class RadioManager:
         self._notify_state_change()
 
     async def _add_songs(self, songs: List[Song], user: Optional[discord.Member | discord.User] = None):
+        if not songs:
+            return
         for song in songs:
             if user:
                 song.requested_by = user.display_name

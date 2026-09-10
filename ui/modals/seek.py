@@ -45,6 +45,9 @@ class SeekModal(Modal):
             parts = ts.split(":")
             if len(parts) == 2:
                 minutes, seconds = map(int, parts)
+                if minutes < 0 or seconds < 0 or seconds >= 60:
+                    await respond(interaction, get_feedback("format_error"), delete_after=self.radio.config.notification_timeout)
+                    return
                 total_seconds = minutes * 60 + seconds
             else:
                 total_seconds = int(ts)
@@ -52,8 +55,16 @@ class SeekModal(Modal):
             await respond(interaction, get_feedback("format_error"), delete_after=self.radio.config.notification_timeout)
             return
         
+        if total_seconds < 0:
+            await respond(interaction, get_feedback("format_error"), delete_after=self.radio.config.notification_timeout)
+            return
+
         if not self.radio.current_song:
             await respond(interaction, get_feedback("no_current_track"), delete_after=self.radio.config.notification_timeout)
+            return
+
+        if self.radio.current_song.duration > 0 and total_seconds > self.radio.current_song.duration:
+            await respond(interaction, get_feedback("too_long"), delete_after=self.radio.config.notification_timeout)
             return
             
         self.radio.dispatch(RadioAction.SEEK, total_seconds, user=interaction.user)

@@ -80,6 +80,7 @@ async def _cmd_clearcache(ctx):
 
 async def _cmd_seek(ctx):
     if not ctx["args"]:
+        await ctx["chan"].send(f"{ctx['author'].mention} {get_feedback('format_error')}", delete_after=ctx["timeout"])
         return
     res = ctx["cs"].seek(ctx["author"], ctx["args"][0])
     await ctx["chan"].send(f"{ctx['author'].mention} {res.feedback}", delete_after=ctx["timeout"])
@@ -118,10 +119,11 @@ async def handle_prefix_commands(message: discord.Message, radio):
         return
 
     prefix = config.command_prefix
-    if not message.content.startswith(prefix):
+    clean_content = message.content.strip()
+    if not clean_content.startswith(prefix):
         return
 
-    content = message.content[len(prefix):].strip()
+    content = clean_content[len(prefix):].strip()
     if not content:
         return
 

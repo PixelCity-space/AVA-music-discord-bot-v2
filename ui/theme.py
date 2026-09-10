@@ -16,15 +16,27 @@ class Theme:
     @classmethod
     def init_theme(cls, config):
         theme_data = config.ui_settings.get("theme", {}) if hasattr(config, "ui_settings") else {}
-        cls.PRIMARY = int(theme_data.get("primary", "0x2b2d31"), 16)
-        cls.SECONDARY = int(theme_data.get("secondary", "0x2b2d31"), 16)
-        cls.SUCCESS = int(theme_data.get("success", "0x57F287"), 16)
-        cls.WARNING = int(theme_data.get("warning", "0xFEE75C"), 16)
-        cls.DANGER = int(theme_data.get("danger", "0xED4245"), 16)
-        cls.BACKGROUND = int(theme_data.get("background", "0x2b2d31"), 16)
-        cls.ACCENT = int(theme_data.get("accent", "0xEB459E"), 16)
-        cls.PLAYING = int(theme_data.get("playing", "0x1c6bff"), 16)
-        cls.PAUSED = int(theme_data.get("paused", "0xFEE75C"), 16)
-        cls.STOPPED = int(theme_data.get("stopped", "0xED4245"), 16)
-        cls.IDLE = int(theme_data.get("idle", "0x2b2d31"), 16)
-        cls.BUFFERING = int(theme_data.get("buffering", "0xEB459E"), 16)
+
+        def parse_color(key: str, default: int) -> int:
+            val = theme_data.get(key)
+            if val is None:
+                return default
+            try:
+                if isinstance(val, int):
+                    return val
+                return int(str(val), 16)
+            except Exception:
+                return default
+
+        cls.PRIMARY = parse_color("primary", 0x2b2d31)
+        cls.SECONDARY = parse_color("secondary", 0x2b2d31)
+        cls.SUCCESS = parse_color("success", 0x57F287)
+        cls.WARNING = parse_color("warning", 0xFEE75C)
+        cls.DANGER = parse_color("danger", 0xED4245)
+        cls.BACKGROUND = parse_color("background", 0x2b2d31)
+        cls.ACCENT = parse_color("accent", 0xEB459E)
+        cls.PLAYING = parse_color("playing", 0x1c6bff)
+        cls.PAUSED = parse_color("paused", 0xFEE75C)
+        cls.STOPPED = parse_color("stopped", 0xED4245)
+        cls.IDLE = parse_color("idle", 0x2b2d31)
+        cls.BUFFERING = parse_color("buffering", 0xEB459E)

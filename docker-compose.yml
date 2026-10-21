@@ -1,0 +1,12 @@
+services:
+  bot:
+    build: .
+    image: ava-music-bot
+    restart: unless-stopped
+    volumes:
+      - ./configs:/app/configs
+      - ./locales:/app/locales
+    # Instance name or custom config path (see main.py --config)
+    # command: ["uv", "run", "--no-dev", "python", "main.py", "1"]
+    env_file:
+      - .env

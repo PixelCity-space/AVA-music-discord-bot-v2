@@ -7,6 +7,5 @@ services:
       - ./configs:/app/configs
       - ./locales:/app/locales
     # Instance name or custom config path (see main.py --config)
+    # Each instance pairs configs/configN.json with configs/N.env (loaded by utils/config.py)
     # command: ["uv", "run", "--no-dev", "python", "main.py", "1"]
-    env_file:
-      - .env

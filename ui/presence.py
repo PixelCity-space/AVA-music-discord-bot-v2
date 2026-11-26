@@ -1,5 +1,7 @@
 import random
+
 import discord
+
 from core.actions import RadioState
 from core.models import Song
 from ui.i18n import t

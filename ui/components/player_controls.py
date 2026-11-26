@@ -3,14 +3,17 @@ Interactive Discord UI controls for playback orchestration (buttons, selects, st
 """
 
 import discord
-from ui.icons import Icons
-from ui.i18n import t
-from ui.feedback import get_feedback
-from ui.utils import respond
-from ui.views.base import handle_ui_error
+
 from core.actions import RadioAction, RadioState
 from core.models import Song
+from ui.feedback import get_feedback
+from ui.i18n import t
+from ui.icons import Icons
+from ui.utils import respond
+from ui.views.base import handle_ui_error
+from ui.views.help import HelpView
 from utils.logger import log
+
 
 class StationSelect(discord.ui.Select):
     """Dropdown menu for selecting and switching voice channels (stations)."""
@@ -219,10 +222,11 @@ class FavoriteToggleButton(discord.ui.Button):
         key = "added_to_fav" if added else "removed_from_fav"
         await respond(interaction, get_feedback(key), delete_after=self.radio.config.notification_timeout)
         
-        try:
-            await interaction.message.edit(view=self.view)
-        except Exception as e:
-            log.debug(f"[UI] Could not refresh player view: {e}")
+        if interaction.message:
+            try:
+                await interaction.message.edit(view=self.view)
+            except Exception as e:
+                log.debug(f"[UI] Could not refresh player view: {e}")
 
 class HelpButton(discord.ui.Button):
     """Button to display the radio help and commands embed."""
@@ -237,6 +241,5 @@ class HelpButton(discord.ui.Button):
 
     @handle_ui_error
     async def callback(self, interaction: discord.Interaction):
-        from ui.views.help import HelpView
         view = HelpView(self.radio)
         await respond(interaction, embed=view.get_embed())

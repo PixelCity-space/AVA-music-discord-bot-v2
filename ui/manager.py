@@ -1,10 +1,12 @@
 import asyncio
+
 import discord
-from ui.i18n import init_translate
+
 from core.actions import RadioState
 from core.models import Song
 from ui.cleanup import ChannelCleaner
 from ui.context import UIContext
+from ui.i18n import init_translate
 from ui.presence import PresenceManager
 from ui.utils import safe_delete_message, safe_fetch_message
 from ui.views.player import NowPlayingView
@@ -117,7 +119,8 @@ class UIManager:
             msg_id = self.radio.embed_manager.load_message_id("station")
             if msg_id:
                 fetched = await safe_fetch_message(channel, msg_id)
-                if fetched and fetched.author.id == self.bot.user.id:
+                bot_user = self.bot.user
+                if fetched and bot_user and fetched.author.id == bot_user.id:
                     self.radio.station_message = fetched
                 else:
                     log.debug(f"[UI] Stored station message {msg_id} unavailable; will post new message.")
@@ -177,16 +180,17 @@ class UIManager:
         if not channel:
             return
 
+        bot_user = self.bot.user
         if not show_player:
             self._last_player_sig = None
             msg_id = self.radio.embed_manager.load_message_id("player")
             if self.radio.now_playing_message:
-                if self.radio.now_playing_message.author.id == self.bot.user.id:
+                if bot_user and self.radio.now_playing_message.author.id == bot_user.id:
                     await safe_delete_message(self.radio.now_playing_message)
                 self.radio.now_playing_message = None
             elif msg_id:
                 m = await safe_fetch_message(channel, msg_id)
-                if m and m.author.id == self.bot.user.id:
+                if m and bot_user and m.author.id == bot_user.id:
                     await safe_delete_message(m)
 
             em = self.radio.embed_manager
@@ -200,7 +204,7 @@ class UIManager:
             msg_id = self.radio.embed_manager.load_message_id("player")
             if msg_id:
                 fetched = await safe_fetch_message(channel, msg_id)
-                if fetched and fetched.author.id == self.bot.user.id:
+                if fetched and bot_user and fetched.author.id == bot_user.id:
                     self.radio.now_playing_message = fetched
                 else:
                     log.debug(f"[UI] Stored player message {msg_id} unavailable; will post new message.")

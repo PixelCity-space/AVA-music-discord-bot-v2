@@ -1,15 +1,17 @@
 import os
 import tempfile
-import pytest
 from dataclasses import dataclass
-from typing import Optional, List
+
+import pytest
+
 from core.database import Database
 from core.state import RadioManager
 from utils.config import Config
 
+
 @dataclass
 class MockVoiceState:
-    channel: Optional[object] = None
+    channel: object | None = None
 
 @dataclass
 class MockRole:
@@ -34,15 +36,15 @@ class MockTextChannel:
     def __init__(self, id: int = 100, name: str = "radio-chat"):
         self.id = id
         self.name = name
-        self.sent_messages: List[str] = []
+        self.sent_messages: list[str] = []
 
     async def send(self, content=None, *args, **kwargs):
-        self.sent_messages.append(content)
+        self.sent_messages.append("" if content is None else str(content))
         return self
 
 class MockMember:
-    def __init__(self, id: int = 1001, name: str = "TestUser", display_name: str = "TestDisplay", 
-                 is_admin: bool = False, voice_channel: Optional[MockVoiceChannel] = None):
+    def __init__(self, id: int = 1001, name: str = "TestUser", display_name: str = "TestDisplay",
+                 is_admin: bool = False, voice_channel: MockVoiceChannel | None = None, bot: bool = False):
         self.id = id
         self.name = name
         self.display_name = display_name
@@ -51,6 +53,7 @@ class MockMember:
         self.guild_permissions = MockGuildPermissions(administrator=is_admin)
         self.roles = [MockRole(id=1)]
         self.voice = MockVoiceState(channel=voice_channel) if voice_channel else None
+        self.bot = bot
 
 @pytest.fixture
 def mock_config():

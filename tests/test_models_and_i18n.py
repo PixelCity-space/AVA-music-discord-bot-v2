@@ -1,5 +1,6 @@
 from core.models import Song
-from ui.i18n import t, load_locales_for_instance, init_translate
+from ui.i18n import init_translate, load_locales_for_instance, t
+
 
 def test_song_model_creation():
     s = Song(title="My Song", path="http://example.com/audio.mp3", uploader="Artist", duration=210)

@@ -5,29 +5,29 @@ Designed to test boundaries, race conditions, security, and edge-cases across Ra
 
 import asyncio
 import os
-import sqlite3
+import queue
 import tempfile
 import time
+from logging.handlers import RotatingFileHandler
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
 from core.actions import RadioAction, RadioState
-from core.database import Database, SQLiteConnectionPool
+from core.database import SQLiteConnectionPool
 from core.models import Song
-from core.state import RadioManager
+from providers.ytdlp_provider import YTDLPProvider
 from services.audio_player import RadioPlayer
-from services.favorites import FavoriteManager
-from services.history import HistoryManager
 from services.player import AudioSourceFactory, PrefetchService, VoiceManager
 from services.track_resolver import TrackResolverService
-from tests.conftest import MockMember, MockVoiceChannel
+from tests.conftest import MockMember
 from ui.components.progress_bar import create_progress_bar
+from ui.utils import delayed_delete
 from ui.views.base import BaseView, PaginatedView
 from utils.config import Config
 from utils.logger import log, setup_logging
-
 
 # =====================================================================
 # Feature 1: Track Resolver & Security Validation
@@ -62,6 +62,7 @@ def test_scenario_04_query_containing_null_bytes_and_control_chars():
     """Scenario 4: Query containing null bytes and non-printable control characters."""
     dirty = "Track\x00Name\r\n\x1b[31m"
     cleaned = TrackResolverService.sanitize_query(dirty)
+    assert cleaned is not None
     assert "\x00" not in cleaned
     assert "\r" not in cleaned
     assert "\n" not in cleaned
@@ -135,9 +136,7 @@ async def test_scenario_09_song_loop_when_stream_url_expires(test_radio):
 @pytest.mark.asyncio
 async def test_scenario_10_queue_loop_when_all_tracks_fail(test_radio):
     """Scenario 10: Queue loop active when all remaining tracks fail to resolve."""
-    # In audio_player.py line 129:
-    # else: if self.radio.loop_queue_mode and self.radio.current_song: self.radio.queue.pop(0)
-    # When queue is empty, queue.pop(0) raises IndexError!
+    # Ensure empty queue with loop_queue_mode does not raise IndexError.
     player = RadioPlayer(
         bot=MagicMock(),
         config=test_radio.config,
@@ -255,7 +254,7 @@ async def test_scenario_14_forbidden_bot_in_channel_aborts_join(test_radio):
     forbidden_member.name = "RivalBot"
     channel.members = [forbidden_member]
 
-    vm.bot.get_guild.return_value = guild
+    vm.bot.get_guild = MagicMock(return_value=guild)
     guild.voice_client = None
 
     voice = await vm.ensure_voice()
@@ -346,7 +345,6 @@ def test_scenario_18_ffmpeg_crash_callback_error_handling():
 @pytest.mark.asyncio
 async def test_scenario_19_stream_url_rate_limit_429():
     """Scenario 19: Stream URL returns HTTP 429 Too Many Requests."""
-    from providers.ytdlp_provider import YTDLPProvider
     provider = YTDLPProvider()
 
     # Simulate YoutubeDL extract_info raising HTTP 429 error
@@ -413,7 +411,7 @@ def test_scenario_22_favorite_rapid_spam_cooldown(test_radio):
 def test_scenario_23_favorite_track_with_none_path(test_radio):
     """Scenario 23: Favoriting a track with missing URL or empty path."""
     fm = test_radio.fav_manager
-    invalid_song = Song(title="No Path", path=None)
+    invalid_song = Song(title="No Path", path=cast(Any, None))
     assert fm.toggle_favorite("u1", invalid_song) is False
 
 
@@ -440,9 +438,8 @@ def test_scenario_25_pool_exhaustion_timeout():
     conn1 = pool._pool.get(timeout=0.1)
     try:
         # Attempting to acquire second connection should time out
-        with pytest.raises(Exception):
-            with pool.get_connection():
-                pass
+        with pytest.raises(queue.Empty), pool.get_connection():
+            pass
     finally:
         pool._pool.put(conn1)
         pool.close()
@@ -452,9 +449,8 @@ def test_scenario_25_pool_exhaustion_timeout():
 def test_scenario_26_database_operation_after_pool_closed(test_db):
     """Scenario 26: Database operation attempted after pool is closed."""
     test_db.close()
-    with pytest.raises(RuntimeError, match="closed"):
-        with test_db._get_connection():
-            pass
+    with pytest.raises(RuntimeError, match="closed"), test_db._get_connection():
+        pass
 
 
 def test_scenario_27_history_table_pruning_limit(test_db):
@@ -521,7 +517,6 @@ async def test_scenario_30_view_interaction_expired_token(test_radio):
 @pytest.mark.asyncio
 async def test_scenario_31_delayed_delete_missing_manage_messages_permission():
     """Scenario 31: Bot lacks 'Manage Messages' permission during delayed delete."""
-    from ui.utils import delayed_delete
     mock_message = AsyncMock()
     mock_message.delete.side_effect = discord.Forbidden(MagicMock(), "Missing Permissions")
 
@@ -571,7 +566,6 @@ def test_scenario_34_logging_unicode_emojis_windows_safety():
 
 def test_scenario_35_log_rotation_permission_error_handled():
     """Scenario 35: Rotating log file is locked by an external process during rollover."""
-    from logging.handlers import RotatingFileHandler
     temp_dir = tempfile.TemporaryDirectory()
     log_file = os.path.join(temp_dir.name, "locked.log")
 

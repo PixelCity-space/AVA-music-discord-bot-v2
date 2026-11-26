@@ -1,20 +1,22 @@
-from typing import Optional
-from discord.ui import ActionRow, Container, TextDisplay, Separator
-from ui.theme import Theme
+
+from discord.ui import ActionRow, Container, Separator, TextDisplay
+
+from core.models import Song
+from ui.components.list_controls import (
+    ClearQueueButton,
+    FavoriteListButton,
+    MoveDownButton,
+    MoveUpButton,
+    RemoveFromQueueButton,
+)
 from ui.feedback import get_feedback
+from ui.theme import Theme
 from ui.utils import format_duration, truncate
 from ui.views.base import PaginatedView
-from ui.components.list_controls import (
-    MoveUpButton, 
-    MoveDownButton, 
-    RemoveFromQueueButton, 
-    FavoriteListButton, 
-    ClearQueueButton
-)
-from core.models import Song
+
 
 class FullQueueView(PaginatedView):
-    def __init__(self, radio, page: int = 0, user: Optional[object] = None):
+    def __init__(self, radio, page: int = 0, user=None):
         queue = [Song.from_dict(r) if isinstance(r, dict) else r for r in radio.queue]
         super().__init__(radio, queue, items_per_page=radio.config.queue_items_per_page, page=page)
         self.user = user

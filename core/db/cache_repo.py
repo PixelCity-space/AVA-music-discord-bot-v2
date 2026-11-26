@@ -1,7 +1,7 @@
+import threading
 from collections import OrderedDict
 from datetime import datetime
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from core.db.pool import SQLiteConnectionPool
 from utils.logger import log
@@ -13,10 +13,10 @@ class CacheRepository:
     def __init__(self, pool: SQLiteConnectionPool, max_mem_entries: int = 256):
         self._pool = pool
         self._max_mem_entries = max_mem_entries
-        self._mem_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._mem_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._cache_lock = threading.Lock()
 
-    def _mem_put(self, url: str, data: Dict[str, Any]):
+    def _mem_put(self, url: str, data: dict[str, Any]):
         with self._cache_lock:
             if url in self._mem_cache:
                 self._mem_cache.move_to_end(url)
@@ -24,7 +24,7 @@ class CacheRepository:
                 self._mem_cache.popitem(last=False)
             self._mem_cache[url] = dict(data)
 
-    def get(self, url: str) -> Optional[Dict[str, Any]]:
+    def get(self, url: str) -> dict[str, Any] | None:
         if self._pool.is_closed:
             return None
         with self._cache_lock:
@@ -53,7 +53,7 @@ class CacheRepository:
         uploader: str,
         duration: int,
         thumbnail_url: str,
-        local_path: Optional[str] = None,
+        local_path: str | None = None,
     ):
         try:
             now_iso = datetime.now().isoformat()
@@ -73,7 +73,7 @@ class CacheRepository:
                     "url": url,
                     "title": title,
                     "uploader": uploader,
-                    "duration": int(duration),
+                    "duration": duration,
                     "thumbnail_url": thumbnail_url,
                     "local_path": local_path,
                     "last_updated": now_iso,
@@ -109,7 +109,7 @@ class CacheRepository:
         except Exception as e:
             log.error(f"Error clearing cache DB: {e}", exc_info=True)
 
-    def get_all_cached_urls(self) -> List[str]:
+    def get_all_cached_urls(self) -> list[str]:
         try:
             with self._pool.get_connection() as conn:
                 cursor = conn.cursor()
@@ -119,7 +119,7 @@ class CacheRepository:
             log.error(f"Error fetching cached URLs: {e}", exc_info=True)
             return []
 
-    def set_batch(self, songs_data: List[Dict[str, Any]]):
+    def set_batch(self, songs_data: list[dict[str, Any]]):
         if not songs_data:
             return
         try:
@@ -131,19 +131,20 @@ class CacheRepository:
                 except (ValueError, TypeError):
                     return 0
 
-            rows = [
-                (
-                    d.get("url") or d.get("path"),
-                    d.get("title", ""),
-                    d.get("uploader", "Unknown"),
+            rows: list[tuple[str, str, str, int, str, str | None, str]] = []
+            for d in songs_data:
+                url_val = d.get("url") or d.get("path")
+                if not isinstance(url_val, str) or not url_val:
+                    continue
+                rows.append((
+                    url_val,
+                    str(d.get("title") or ""),
+                    str(d.get("uploader") or "Unknown"),
                     _parse_duration(d.get("duration")),
-                    d.get("thumbnail_url", ""),
+                    str(d.get("thumbnail_url") or ""),
                     d.get("local_path"),
                     now_iso,
-                )
-                for d in songs_data
-                if (d.get("url") or d.get("path"))
-            ]
+                ))
             with self._pool.get_connection() as conn:
                 conn.executemany(
                     """

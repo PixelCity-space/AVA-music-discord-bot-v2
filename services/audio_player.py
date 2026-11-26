@@ -1,16 +1,19 @@
-import time
 import asyncio
+import time
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
 import discord
-from typing import Optional, Callable, TYPE_CHECKING
+
 from core.actions import RadioState
 from core.models import Song
-from utils.logger import log
 from services.player import (
-    VoiceManager,
     AudioSourceFactory,
+    PlaybackActionHandler,
     PrefetchService,
-    PlaybackActionHandler
+    VoiceManager,
 )
+from utils.logger import log
 
 if TYPE_CHECKING:
     from core.state import RadioManager
@@ -25,7 +28,7 @@ class RadioPlayer:
 
     def __init__(self, bot: discord.Client, config, radio: 'RadioManager',
                  update_ui_callback: Callable, refresh_ui_callback: Callable,
-                 cleanup_ui_callback: Optional[Callable] = None):
+                 cleanup_ui_callback: Callable | None = None):
         self.bot = bot
         self.config = config
         self.radio = radio
@@ -41,7 +44,7 @@ class RadioPlayer:
 
         self.radio.on_state_change = self.update_ui
 
-    async def ensure_voice(self) -> Optional[discord.VoiceClient]:
+    async def ensure_voice(self) -> discord.VoiceClient | None:
         """Delegates voice connection verification to VoiceManager."""
         return await self.voice_manager.ensure_voice()
 
@@ -63,9 +66,11 @@ class RadioPlayer:
                     continue
 
                 # 3. State: IDLE, STOPPED, or PAUSED
-                if self.radio.status in [RadioState.IDLE, RadioState.STOPPED, RadioState.PAUSED]:
-                    if await self._handle_idle_state(voice):
-                        continue
+                if (
+                    self.radio.status in [RadioState.IDLE, RadioState.STOPPED, RadioState.PAUSED]
+                    and await self._handle_idle_state(voice)
+                ):
+                    continue
 
                 # 4. State: PLAYING (Song Selection & Start)
                 if self.radio.status == RadioState.PLAYING:
@@ -107,7 +112,7 @@ class RadioPlayer:
             if item is not None:
                 action, data = item
                 await self.action_handler.handle_disconnected_action(action, data)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         except Exception as e:
             log.error(f"[PLAYER] Error in disconnected state handler: {e}", exc_info=True)
@@ -122,7 +127,7 @@ class RadioPlayer:
             action, data = item
             self.voice_manager.solitary_start = None
             return await self.action_handler.handle_idle_action(action, data, voice)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return True
 
     def _is_stream_url_stale(self, song: Song) -> bool:
@@ -158,6 +163,9 @@ class RadioPlayer:
                 return
 
         song = self.radio.current_song
+        if song is None:
+            self.radio.status = RadioState.IDLE
+            return
         self.radio.status = RadioState.BUFFERING
         # Run BUFFERING UI update concurrently with source resolution so playback starts faster
         create_task = getattr(self.radio, "create_task", None)
@@ -241,7 +249,7 @@ class RadioPlayer:
 
         try:
             await asyncio.wait_for(done.wait(), timeout=3.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning(f"[PLAYER] Playback thread for \"{song.title}\" did not exit within 3s. Forcing cleanup.")
 
         if not done.is_set():
@@ -303,7 +311,7 @@ class RadioPlayer:
                     await self._wait_for_done_or_action(done, action_event)
                 else:
                     await asyncio.wait_for(done.wait(), timeout=self.config.action_timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
     async def _wait_for_done_or_action(self, done: asyncio.Event, action_event: asyncio.Event):

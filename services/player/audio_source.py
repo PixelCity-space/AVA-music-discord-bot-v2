@@ -1,7 +1,11 @@
-import os
 import asyncio
+import os
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
 import discord
-from typing import Optional, Callable, TYPE_CHECKING
+
+import providers
 from core.models import Song
 from utils.logger import log
 
@@ -15,7 +19,7 @@ class AudioSourceFactory:
         self.config = config
         self.radio = radio
 
-    async def resolve_source(self, song: Song, update_ui_callback: Optional[Callable] = None) -> Optional[str]:
+    async def resolve_source(self, song: Song, update_ui_callback: Callable | None = None) -> str | None:
         """Resolves the audio source path or stream URL for a given song."""
         if os.path.exists(song.path):
             log.debug(f"[PLAYER] Using local file source for: {song.title or song.path}")
@@ -34,7 +38,7 @@ class AudioSourceFactory:
             log.info(f"[PLAYER] Waiting for background resolution: {song.title}")
             try:
                 await asyncio.wait_for(song.resolve_event.wait(), timeout=15.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.warning(f"[PLAYER] Resolution timed out for: {song.title}")
 
         if self.radio.is_cached(song):
@@ -47,8 +51,7 @@ class AudioSourceFactory:
             if not song.stream_url or song.is_resolving:
                 if update_ui_callback:
                     await update_ui_callback(song)
-                from providers import resolve_any
-                resolved = await resolve_any(source_path, self.radio.providers)
+                resolved = await providers.resolve_any(source_path, self.radio.providers)
                 if resolved:
                     song.update(resolved)
                     song.cache_to_db(self.radio.db)
@@ -61,7 +64,7 @@ class AudioSourceFactory:
             return None
         return source_path
 
-    def create_ffmpeg_source(self, source_path: str, song: Optional[Song] = None, 
+    def create_ffmpeg_source(self, source_path: str, song: Song | None = None, 
                              track_start_offset: float = 0.0, volume: float = 0.5) -> discord.FFmpegOpusAudio:
         """Creates a configured FFmpegOpusAudio source with headers and options."""
         is_url = source_path.startswith("http")

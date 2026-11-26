@@ -1,8 +1,8 @@
 import os
 import queue
 import sqlite3
-from contextlib import contextmanager
-from typing import Generator, List
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
 
 
 class SQLiteConnectionPool:
@@ -16,7 +16,7 @@ class SQLiteConnectionPool:
         self.max_connections = max_connections
         self.timeout = timeout
         self._pool: queue.Queue[sqlite3.Connection] = queue.Queue(maxsize=max_connections)
-        self._all_connections: List[sqlite3.Connection] = []
+        self._all_connections: list[sqlite3.Connection] = []
         self._is_closed = False
 
         for _ in range(max_connections):
@@ -78,10 +78,8 @@ def init_schema(pool: SQLiteConnectionPool):
                 last_updated TIMESTAMP
             )
         """)
-        try:
+        with suppress(sqlite3.OperationalError):
             cursor.execute("ALTER TABLE song_cache ADD COLUMN local_path TEXT")
-        except sqlite3.OperationalError:
-            pass
 
         # 2. Playback History
         cursor.execute("""
@@ -141,9 +139,7 @@ def init_schema(pool: SQLiteConnectionPool):
 
         # Migrations for existing history schemas
         for col in ("requested_by TEXT", "user_id TEXT"):
-            try:
+            with suppress(sqlite3.OperationalError):
                 cursor.execute(f"ALTER TABLE history ADD COLUMN {col}")
-            except sqlite3.OperationalError:
-                pass
         conn.commit()
 

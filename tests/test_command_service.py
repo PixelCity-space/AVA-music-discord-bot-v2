@@ -1,6 +1,7 @@
 from core.actions import RadioState
 from core.models import Song
-from tests.conftest import MockMember, MockVoiceChannel
+from tests.conftest import MockMember, MockRole, MockVoiceChannel
+
 
 def test_command_service_voice_permissions(test_radio):
     cs = test_radio.command_service
@@ -35,11 +36,11 @@ def test_command_service_voice_permissions(test_radio):
 
     # Role-based admin checks
     role_admin = MockMember(id=4, is_admin=False, voice_channel=vc1)
-    role_admin.roles = [type("MockRole", (), {"id": test_radio.config.admin_role_id})()]
+    role_admin.roles = [MockRole(id=test_radio.config.admin_role_id)]
     assert test_radio.is_admin(role_admin) is True
 
     role_sysadmin = MockMember(id=5, is_admin=False, voice_channel=vc1)
-    role_sysadmin.roles = [type("MockRole", (), {"id": test_radio.config.sysadmin_role_id})()]
+    role_sysadmin.roles = [MockRole(id=test_radio.config.sysadmin_role_id)]
     assert test_radio.is_admin(role_sysadmin) is True
 
     # Active bot but voice client missing channel

@@ -1,7 +1,9 @@
 import json
 import os
-from dotenv import load_dotenv
 from dataclasses import dataclass, field
+
+from dotenv import load_dotenv
+
 
 @dataclass
 class Config:
@@ -175,7 +177,7 @@ def load_config(config_file: str = "config.json", instance_name: str = "") -> Co
     if not os.path.exists(base_path):
         raise FileNotFoundError(f"Configuration file not found: {base_path}")
         
-    with open(base_path, "r", encoding="utf-8") as f:
+    with open(base_path, encoding="utf-8") as f:
         data = json.load(f)
 
     if "token" in data:

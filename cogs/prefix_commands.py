@@ -3,13 +3,14 @@ Prefix-based text command dispatcher and handlers using Command Registry Pattern
 """
 
 import asyncio
+
 import discord
+
 from ui.feedback import get_feedback
+from ui.utils import schedule_delete
 from ui.views.help import HelpView
 from ui.views.queue import FullQueueView
-from ui.utils import schedule_delete
 from utils.logger import log
-
 
 # --- Command Handler Functions ---
 

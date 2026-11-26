@@ -1,14 +1,17 @@
 import asyncio
+
 import discord
 from discord.ui import Modal, TextInput
-from ui.icons import Icons
-from ui.i18n import t
+
+from core.models import Song
 from ui.feedback import get_feedback
+from ui.i18n import t
+from ui.icons import Icons
 from ui.utils import safe_delete_message
 from ui.views.base import handle_ui_error
 from ui.views.search_results import SearchResultsView
-from core.models import Song
 from utils.logger import log
+
 
 class SearchButton(discord.ui.Button):
     def __init__(self, radio):
@@ -55,7 +58,7 @@ class SearchModal(Modal):
         if search_coros:
             provider_batches = await asyncio.gather(*search_coros, return_exceptions=True)
             for batch in provider_batches:
-                if isinstance(batch, Exception):
+                if isinstance(batch, BaseException):
                     log.warning(f"[SEARCH] Provider search failed: {batch}")
                     continue
                 results.extend([Song.from_dict(res) for res in batch])

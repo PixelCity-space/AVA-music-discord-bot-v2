@@ -1,5 +1,6 @@
-from typing import Optional
+
 from discord.ui import ActionRow, Container, Section, Separator, TextDisplay, Thumbnail
+
 from core.actions import RadioState
 from core.models import Song
 from ui.components.list_controls import QueueViewButton
@@ -26,7 +27,7 @@ from ui.views.base import BaseView
 class NowPlayingView(BaseView):
     """Interactive Discord Components v2 player view showing current track metadata and controls."""
 
-    def __init__(self, radio, song: Song | None = None, context: Optional[UIContext] = None):
+    def __init__(self, radio, song: Song | None = None, context: UIContext | None = None):
         super().__init__(radio)
         self.context = context
         song = song or radio.current_song
@@ -117,7 +118,7 @@ class NowPlayingView(BaseView):
         thumb = None
         thumb_url = song.thumbnail_url if song else None
         if not thumb_url and radio.status == RadioState.IDLE and context and context.bot_user:
-            thumb_url = str(context.bot_user.display_avatar.url)
+            thumb_url = context.bot_user.display_avatar.url
 
         if thumb_url:
             thumb = Thumbnail(thumb_url)

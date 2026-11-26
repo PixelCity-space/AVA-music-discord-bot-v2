@@ -1,5 +1,7 @@
 import asyncio
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
+import providers
 from core.models import Song
 from utils.logger import log
 
@@ -11,8 +13,8 @@ class PrefetchService:
     
     def __init__(self, radio: 'RadioManager'):
         self.radio = radio
-        self.prefetched_song: Optional[Song] = None
-        self.prefetch_task: Optional[asyncio.Task] = None
+        self.prefetched_song: Song | None = None
+        self.prefetch_task: asyncio.Task | None = None
 
     def reset(self):
         """Resets the prefetch state between tracks and cancels any in-flight task."""
@@ -43,8 +45,7 @@ class PrefetchService:
         try:
             log.info(f"[PREFETCH] Pre-buffering next track: {song.title or song.path}")
             if song.is_external and not song.stream_url and not song.is_resolving:
-                from providers import resolve_any
-                resolved = await resolve_any(song.path, self.radio.providers)
+                resolved = await providers.resolve_any(song.path, self.radio.providers)
                 if resolved:
                     song.update(resolved)
                     song.cache_to_db(self.radio.db)

@@ -3,14 +3,17 @@ Discord gateway event listener cog handling ready initialization, voice state up
 """
 
 import asyncio
-import discord
 import random
+
+import discord
 from discord.ext import commands
+
+from cogs.prefix_commands import handle_prefix_commands
 from core.actions import RadioState
 from ui.views.player import NowPlayingView
 from ui.views.station import FrequencyStationView, WelcomeLayout
-from cogs.prefix_commands import handle_prefix_commands
 from utils.logger import log
+
 
 class EventsCog(commands.Cog):
     """Cog listening to lifecycle and voice gateway events (on_ready, on_voice_state_update, on_message)."""
@@ -96,7 +99,8 @@ class EventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-        if member.id == self.bot.user.id:
+        bot_user = self.bot.user
+        if bot_user and member.id == bot_user.id:
             target_channel = after.channel
             old_channel = before.channel
             
@@ -115,11 +119,11 @@ class EventsCog(commands.Cog):
                     self.radio.voice = voice_client
                     await self.ui_manager.update_now_playing(self.radio.current_song)
             else:
-                if not voice_client or not voice_client.is_connected():
+                if not isinstance(voice_client, discord.VoiceClient) or not voice_client.is_connected():
                     await asyncio.sleep(1.5)
                     voice_client = member.guild.voice_client 
                     
-                    if not voice_client or not voice_client.is_connected():
+                    if not isinstance(voice_client, discord.VoiceClient) or not voice_client.is_connected():
                         log.info(f"[VOICE] Confirmed disconnect for {member.guild.name}. Cleaning up state.")
                         prev_channel_id = old_channel.id if old_channel else self.radio.voice_channel_id
                         self.radio.voice_channel_id = None
@@ -131,7 +135,8 @@ class EventsCog(commands.Cog):
                         if prev_channel_id:
                             await self.ui_manager.clear_voice_status(prev_channel_id)
                     else:
-                        log.info(f"[VOICE] Disconnect event was transient. Bot is still connected to {voice_client.channel.name}")
+                        ch_name = voice_client.channel.name if voice_client.channel else "unknown"
+                        log.info(f"[VOICE] Disconnect event was transient. Bot is still connected to {ch_name}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

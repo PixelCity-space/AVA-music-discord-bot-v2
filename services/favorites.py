@@ -1,8 +1,9 @@
 import time
-from typing import List, Dict
-from core.models import Song
+
 from core.database import Database
+from core.models import Song
 from utils.logger import log
+
 
 class FavoriteManager:
     MAX_USER_FAVORITES = 250
@@ -10,14 +11,14 @@ class FavoriteManager:
 
     def __init__(self, db: Database):
         self.db = db
-        self._user_last_toggle: Dict[str, float] = {}
+        self._user_last_toggle: dict[str, float] = {}
 
-    def is_favorite(self, user_id: str, song: Song) -> bool:
+    def is_favorite(self, user_id: str | int, song: Song) -> bool:
         if not song or not song.path:
             return False
         return self.db.is_favorite(str(user_id), song.path)
 
-    def toggle_favorite(self, user_id: str, song: Song) -> bool:
+    def toggle_favorite(self, user_id: str | int, song: Song) -> bool:
         """Returns True if added, False if removed (or rate-limited / capped)."""
         if not song or not song.path:
             return False
@@ -33,20 +34,19 @@ class FavoriteManager:
         if self.db.is_favorite(u_id, song.path):
             self.db.remove_favorite(u_id, song.path)
             return False
-        else:
-            # Check user favorites quota
-            current_count = self.db.get_favorite_count(u_id)
-            if current_count >= self.MAX_USER_FAVORITES:
-                log.warning(f"[QUOTA] User {u_id} reached max favorites limit ({self.MAX_USER_FAVORITES}).")
-                return False
+        # Check user favorites quota
+        current_count = self.db.get_favorite_count(u_id)
+        if current_count >= self.MAX_USER_FAVORITES:
+            log.warning(f"[QUOTA] User {u_id} reached max favorites limit ({self.MAX_USER_FAVORITES}).")
+            return False
 
-            self.db.add_favorite(u_id, song)
-            song.cache_to_db(self.db)
-            return True
+        self.db.add_favorite(u_id, song)
+        song.cache_to_db(self.db)
+        return True
 
-    def get_favorites(self, user_id: str) -> List[Song]:
+    def get_favorites(self, user_id: str | int) -> list[Song]:
         return self.db.get_favorites(str(user_id))
 
-    def clear_favorites(self, user_id: str):
+    def clear_favorites(self, user_id: str | int):
         """Removes all favorites for a specific user."""
         self.db.clear_favorites(str(user_id))

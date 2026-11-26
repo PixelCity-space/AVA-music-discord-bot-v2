@@ -2,17 +2,19 @@
 Audio playback control slash commands cog for RadioBot.
 """
 
+
 import discord
 from discord import app_commands
-from typing import Optional
+
 from cogs.base import BaseRadioCog
 from ui.utils import respond
+
 
 class PlaybackCog(BaseRadioCog):
     """Cog managing playback controls including play, pause, stop, skip, back, and seek."""
     @app_commands.command(name="play", description="Start or resume playback, or add a link/search query")
     @app_commands.describe(url="YouTube/SoundCloud link or search keywords")
-    async def play(self, interaction: discord.Interaction, url: Optional[str] = None):
+    async def play(self, interaction: discord.Interaction, url: str | None = None):
         if url:
             await interaction.response.defer(ephemeral=True)
         res = self.radio.command_service.play(interaction.user, url)

@@ -1,7 +1,9 @@
 import asyncio
+
 from core.actions import RadioAction, RadioState
 from core.models import Song
 from tests.conftest import MockMember
+
 
 async def test_radio_queue_management(test_radio):
     assert len(test_radio.queue) == 0
@@ -30,12 +32,12 @@ async def test_radio_modes_toggle(test_radio):
 
     # Toggle loop mode
     test_radio.dispatch(RadioAction.LOOP)
-    assert test_radio.loop_mode is True
+    assert test_radio.loop_mode
 
     # Toggle loop queue mode (should disable single loop)
     test_radio.dispatch(RadioAction.LOOP_QUEUE)
-    assert test_radio.loop_queue_mode is True
-    assert test_radio.loop_mode is False
+    assert test_radio.loop_queue_mode
+    assert not test_radio.loop_mode
 
 async def test_background_task_tracking_and_close(test_radio):
     executed = []
@@ -85,7 +87,7 @@ async def test_radio_additional_actions(test_radio):
     test_radio.db.add_history(s1)
     assert test_radio.has_history is True
     test_radio.dispatch(RadioAction.CLEAR_HISTORY)
-    assert test_radio.has_history is False
+    assert not test_radio.has_history
     assert len(test_radio.history) == 0
 
     # HistoryManager methods directly

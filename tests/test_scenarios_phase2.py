@@ -13,20 +13,15 @@ import discord
 import pytest
 
 from core.actions import RadioAction, RadioState
-from core.database import Database
 from core.models import Song
-from core.state import RadioManager
 from providers.ytdlp_provider import YTDLPProvider
 from services.cache_service import CacheService
-from services.command_service import CommandService
-from services.permissions import PermissionService
 from services.player import AudioSourceFactory
 from tests.conftest import MockMember, MockVoiceChannel
-from ui.i18n import t, init_translate
+from ui.i18n import init_translate, t
 from ui.icons import Icons
 from ui.theme import Theme
-from ui.utils import truncate, delayed_delete
-
+from ui.utils import delayed_delete, truncate
 
 # =====================================================================
 # Feature 1: Local Cache Lifecycle & Disk Eviction
@@ -47,9 +42,12 @@ def test_scenario_01_cache_lru_size_eviction(test_db):
     p2 = os.path.join(temp_dir.name, "mid_track.mp3")
     p3 = os.path.join(temp_dir.name, "new_track.mp3")
 
-    with open(p1, "wb") as f: f.write(b"0" * 600 * 1024)
-    with open(p2, "wb") as f: f.write(b"0" * 600 * 1024)
-    with open(p3, "wb") as f: f.write(b"0" * 600 * 1024)
+    with open(p1, "wb") as f:
+        f.write(b"0" * 600 * 1024)
+    with open(p2, "wb") as f:
+        f.write(b"0" * 600 * 1024)
+    with open(p3, "wb") as f:
+        f.write(b"0" * 600 * 1024)
 
     # Set access times: p1 oldest, p3 newest
     now = time.time()
@@ -79,8 +77,10 @@ def test_scenario_02_cache_expiry_purge(test_db):
     p_expired = os.path.join(temp_dir.name, "expired.mp3")
     p_fresh = os.path.join(temp_dir.name, "fresh.mp3")
 
-    with open(p_expired, "wb") as f: f.write(b"data")
-    with open(p_fresh, "wb") as f: f.write(b"data")
+    with open(p_expired, "wb") as f:
+        f.write(b"data")
+    with open(p_fresh, "wb") as f:
+        f.write(b"data")
 
     now = time.time()
     # 15 days ago (> 10 days limit)
@@ -107,7 +107,8 @@ def test_scenario_03_cache_cleanup_locked_file_handled(test_db):
     cs.cache_dir = temp_dir.name
 
     p = os.path.join(temp_dir.name, "locked.mp3")
-    with open(p, "wb") as f: f.write(b"0" * 5000)
+    with open(p, "wb") as f:
+        f.write(b"0" * 5000)
 
     with patch("os.remove", side_effect=PermissionError("File locked by process")):
         # Must catch PermissionError and continue without raising
@@ -127,7 +128,8 @@ def test_scenario_04_ephemeral_cache_clear_on_startup(test_db):
     cs.cache_dir = temp_dir.name
 
     p = os.path.join(temp_dir.name, "song.mp3")
-    with open(p, "wb") as f: f.write(b"audio")
+    with open(p, "wb") as f:
+        f.write(b"audio")
 
     test_db.set_cache("http://song.mp3", "Song", "Artist", 120, "", local_path=p)
 
@@ -157,15 +159,18 @@ async def test_scenario_05_concurrent_cache_download_lock(test_db):
         nonlocal executed_count
         executed_count += 1
         await asyncio.sleep(0.05)
-        with open(real_file, "wb") as f: f.write(b"audio")
+        with open(real_file, "wb") as f:
+            f.write(b"audio")
         mock_proc = AsyncMock()
         mock_proc.communicate.return_value = (b"", b"")
         mock_proc.returncode = 0
         return mock_proc
 
-    with patch("asyncio.create_subprocess_exec", side_effect=fake_ytdlp):
-        with patch.object(cs, "get_cache_path", return_value=real_file):
-            # Launch two parallel downloads for the exact same song
+    with (
+        patch("asyncio.create_subprocess_exec", side_effect=fake_ytdlp),
+        patch.object(cs, "get_cache_path", return_value=real_file),
+    ):
+        # Launch two parallel downloads for the exact same song
             task1 = asyncio.create_task(cs._download_task(song))
             task2 = asyncio.create_task(cs._download_task(song))
             await asyncio.gather(task1, task2)
@@ -355,8 +360,8 @@ def test_scenario_20_loop_mode_clears_loop_queue(test_radio):
     test_radio.loop_mode = False
 
     test_radio.dispatch(RadioAction.LOOP)
-    assert test_radio.loop_mode is True
-    assert test_radio.loop_queue_mode is False
+    assert test_radio.loop_mode
+    assert not test_radio.loop_queue_mode
 
 
 # =====================================================================

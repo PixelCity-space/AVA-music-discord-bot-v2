@@ -2,13 +2,16 @@ import asyncio
 import ipaddress
 import os
 import re
+import time
 from urllib.parse import urlparse
-from typing import Optional, List
+
 import discord
-from core.models import Song
+
 from core.database import Database
+from core.models import Song
 from providers import resolve_any, resolve_playlist_any
 from utils.logger import log
+
 
 class TrackResolverService:
     """
@@ -23,7 +26,7 @@ class TrackResolverService:
         self.providers = providers
 
     @classmethod
-    def sanitize_query(cls, query: str) -> Optional[str]:
+    def sanitize_query(cls, query: str | None) -> str | None:
         """
         Sanitizes and validates user input query or URL.
         Rejects queries exceeding length limit, forbidden URL schemes, control chars, or injection patterns.
@@ -69,20 +72,20 @@ class TrackResolverService:
         """Returns the matching provider for a given URL query, if any."""
         return next((p for p in self.providers if p.matches(query)), None)
 
-    async def prepare_external_song(self, query: str, user: Optional[discord.Member | discord.User] = None) -> Optional[Song]:
+    async def prepare_external_song(self, query: str, user: discord.Member | discord.User | None = None) -> Song | None:
         """Prepares a Song object from a URL or search query with cache lookup."""
-        query = self.sanitize_query(query)
-        if not query:
+        sanitized = self.sanitize_query(query)
+        if not sanitized:
             return None
 
-        provider = self.is_matching_provider(query)
+        provider = self.is_matching_provider(sanitized)
 
         if provider:
-            cached = self.db.get_cache(query)
+            cached = self.db.get_cache(sanitized)
             if cached:
                 song = Song.from_dict(cached)
-                song.path = query
-                log.info(f"[CACHE] Hit for: {query}")
+                song.path = sanitized
+                log.info(f"[CACHE] Hit for: {sanitized}")
                 if cached.get("local_path") and os.path.exists(cached["local_path"]):
                     song.is_resolving = False
                 else:
@@ -90,34 +93,33 @@ class TrackResolverService:
             else:
                 song = Song(
                     title=None,
-                    path=query,
+                    path=sanitized,
                     uploader="...",
                     duration=0,
                     is_external=True,
                     is_resolving=True
                 )
         else:
-            log.info(f"[SEARCH] Searching for: {query}")
+            log.info(f"[SEARCH] Searching for: {sanitized}")
             resolved_first = None
             for p in self.providers:
                 if hasattr(p, "search_and_resolve_first"):
-                    resolved_first = await p.search_and_resolve_first(query)
+                    resolved_first = await p.search_and_resolve_first(sanitized)
                     if resolved_first:
                         break
                 elif hasattr(p, "search"):
-                    res = await p.search(query, limit=1)
+                    res = await p.search(sanitized, limit=1)
                     if res:
                         resolved_first = res[0]
                         break
 
             if not resolved_first:
-                log.warning(f"[SEARCH] No results found for: {query}")
+                log.warning(f"[SEARCH] No results found for: {sanitized}")
                 return None
 
             song = Song.from_dict(resolved_first)
             song.is_resolving = False
             if song.stream_url:
-                import time
                 song.stream_resolved_at = time.monotonic()
             log.info(f"[SEARCH] Added first result: {song.title}")
 
@@ -127,7 +129,7 @@ class TrackResolverService:
 
         return song
 
-    async def resolve_playlist(self, url: str, user: Optional[discord.Member | discord.User] = None) -> List[Song]:
+    async def resolve_playlist(self, url: str, user: discord.Member | discord.User | None = None) -> list[Song]:
         """Resolves all tracks within a playlist URL."""
         tracks_data = await resolve_playlist_any(url, self.providers)
         if not tracks_data:
@@ -158,10 +160,9 @@ class TrackResolverService:
                 song.cache_to_db(self.db, local_path=cached.get("local_path") if cached else None)
                 log.info(f"[RESOLVER] Successfully resolved: {song.uploader} - {song.title}")
                 return True
-            else:
-                song.title = f"⚠️ {song.path}"
-                log.warning(f"[RESOLVER] Failed to resolve link: {song.path}")
-                return False
+            song.title = f"⚠️ {song.path}"
+            log.warning(f"[RESOLVER] Failed to resolve link: {song.path}")
+            return False
         except Exception as e:
             log.error(f"[RADIO] Resolution task exception: {e}", exc_info=True)
             song.title = f"⚠️ {song.path}"

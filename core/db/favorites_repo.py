@@ -1,6 +1,5 @@
-from collections import OrderedDict
 import threading
-from typing import List, Optional
+from collections import OrderedDict
 
 from core.db.pool import SQLiteConnectionPool
 from core.models import Song
@@ -16,7 +15,7 @@ class FavoritesRepository:
         self._fav_cache: OrderedDict[str, set[str]] = OrderedDict()
         self._cache_lock = threading.Lock()
 
-    def _ensure_user_cache(self, user_id: str) -> Optional[set[str]]:
+    def _ensure_user_cache(self, user_id: str | int) -> set[str] | None:
         if self._pool.is_closed or not user_id:
             return None
         uid = str(user_id)
@@ -40,7 +39,7 @@ class FavoritesRepository:
             log.error(f"Error loading favorites cache for user {uid}: {e}", exc_info=True)
             return None
 
-    def add(self, user_id: str, song: Song):
+    def add(self, user_id: str | int, song: Song):
         if not song or not song.path:
             return
         try:
@@ -62,7 +61,7 @@ class FavoritesRepository:
         except Exception as e:
             log.error(f"Error adding favorite to DB: {e}", exc_info=True)
 
-    def remove(self, user_id: str, path: str):
+    def remove(self, user_id: str | int, path: str):
         try:
             uid = str(user_id)
             with self._pool.get_connection() as conn:
@@ -75,13 +74,13 @@ class FavoritesRepository:
         except Exception as e:
             log.error(f"Error removing favorite from DB: {e}", exc_info=True)
 
-    def is_favorite(self, user_id: str, path: str) -> bool:
+    def is_favorite(self, user_id: str | int, path: str) -> bool:
         if not user_id or not path or self._pool.is_closed:
             return False
         cached = self._ensure_user_cache(str(user_id))
         return path in cached if cached is not None else False
 
-    def get_all(self, user_id: str) -> List[Song]:
+    def get_all(self, user_id: str | int) -> list[Song]:
         try:
             with self._pool.get_connection() as conn:
                 cursor = conn.cursor()
@@ -91,7 +90,7 @@ class FavoritesRepository:
             log.error(f"Error getting favorites from DB: {e}", exc_info=True)
             return []
 
-    def count(self, user_id: str) -> int:
+    def count(self, user_id: str | int) -> int:
         if self._pool.is_closed:
             return 0
         uid = str(user_id)
@@ -110,7 +109,7 @@ class FavoritesRepository:
             log.error(f"Error getting favorite count from DB: {e}", exc_info=True)
             return 0
 
-    def clear(self, user_id: str):
+    def clear(self, user_id: str | int):
         try:
             uid = str(user_id)
             with self._pool.get_connection() as conn:

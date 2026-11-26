@@ -1,6 +1,7 @@
 import json
 import os
 import re
+
 from ui.icons import Icons
 from utils.logger import log
 
@@ -33,7 +34,7 @@ def load_locales_for_instance(instance_name: str = "") -> dict:
         if filename.endswith(".json") and "_" not in filename:
             lang_code = filename[:-5]
             try:
-                with open(os.path.join(locales_path, filename), "r", encoding="utf-8") as f:
+                with open(os.path.join(locales_path, filename), encoding="utf-8") as f:
                     trans[lang_code] = json.load(f)
             except Exception as e:
                 log.error(f"[I18N] Error loading base locale {filename}: {e}", exc_info=True)
@@ -46,7 +47,7 @@ def load_locales_for_instance(instance_name: str = "") -> dict:
                 lang_code = filename.split("_")[0]
                 if lang_code in trans:
                     try:
-                        with open(os.path.join(locales_path, filename), "r", encoding="utf-8") as f:
+                        with open(os.path.join(locales_path, filename), encoding="utf-8") as f:
                             overrides = json.load(f)
                             trans[lang_code].update(overrides)
                     except Exception as e:

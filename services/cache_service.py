@@ -1,16 +1,25 @@
-import os
-import time
-import hashlib
 import asyncio
+import hashlib
+import os
 import shutil
 import sys
-from typing import Optional, Callable
-from core.models import Song
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+
 from core.database import Database
+from core.models import Song
 from utils.logger import log
 
 COMMON_AUDIO_EXTS = (".opus", ".webm", ".m4a", ".mp3", ".ogg", ".mp4", ".wav")
 _IGNORED_TEMP_EXTS = (".part", ".tmp", ".ytdl")
+
+
+@dataclass(slots=True)
+class _CacheFileEntry:
+    path: str
+    size: int
+    atime: float
 
 
 class CacheService:
@@ -26,8 +35,8 @@ class CacheService:
         self._url_locks: dict[str, asyncio.Lock] = {}
         self._in_flight: set[str] = set()
         self._path_index: dict[str, str] = {}
-        self._indexed_dir: Optional[str] = None
-        self._indexed_dir_mtime_ns: Optional[int] = None
+        self._indexed_dir: str | None = None
+        self._indexed_dir_mtime_ns: int | None = None
         self._ytdlp_cmd = self._resolve_ytdlp_cmd()
         self._rebuild_path_index()
 
@@ -82,7 +91,7 @@ class CacheService:
         except OSError as e:
             log.warning(f"[CACHE] Failed to stat cache directory '{self.cache_dir}': {e}")
 
-    def _probe_hash_on_disk(self, fn_hash: str) -> Optional[str]:
+    def _probe_hash_on_disk(self, fn_hash: str) -> str | None:
         """Direct lookup for a specific hash right after download completes."""
         for ext in COMMON_AUDIO_EXTS:
             candidate = os.path.join(self.cache_dir, f"{fn_hash}{ext}")
@@ -93,15 +102,18 @@ class CacheService:
         try:
             with os.scandir(self.cache_dir) as entries:
                 for entry in entries:
-                    if entry.is_file() and entry.name.startswith(prefix):
-                        if not entry.name.lower().endswith(_IGNORED_TEMP_EXTS):
-                            self._path_index[fn_hash] = entry.path
-                            return entry.path
+                    if (
+                        entry.is_file()
+                        and entry.name.startswith(prefix)
+                        and not entry.name.lower().endswith(_IGNORED_TEMP_EXTS)
+                    ):
+                        self._path_index[fn_hash] = entry.path
+                        return entry.path
         except OSError as e:
             log.warning(f"[CACHE] Failed to probe cache directory '{self.cache_dir}': {e}")
         return None
 
-    def get_cache_path(self, song: Song) -> Optional[str]:
+    def get_cache_path(self, song: Song) -> str | None:
         """Returns the local file path if a cached file exists for this song."""
         if not song or not song.path:
             return None
@@ -143,7 +155,7 @@ class CacheService:
 
         return False
 
-    async def start_cache_download(self, song: Song, task_creator: Optional[Callable] = None):
+    async def start_cache_download(self, song: Song, task_creator: Callable | None = None):
         """Initiates a background download of the song to the local cache without duplicate tasks."""
         if not song or not song.path or song.path in self._in_flight or self.is_cached(song):
             return
@@ -209,7 +221,7 @@ class CacheService:
                     else:
                         err = stderr.decode(errors="ignore").strip()
                         log.error(f"[CACHE] Download failed for {song.title}: {err}")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.error(f"[CACHE] Download timed out for {song.title}. Killing process.")
             if process:
                 try:
@@ -230,39 +242,39 @@ class CacheService:
     def cleanup_cache(self):
         """Auto-cleanup of the cache based on size and expiry."""
         try:
-            files = []
+            files: list[_CacheFileEntry] = []
             with os.scandir(self.cache_dir) as entries:
                 for entry in entries:
                     if entry.is_file():
                         stats = entry.stat()
-                        files.append({
-                            "path": entry.path,
-                            "size": stats.st_size,
-                            "atime": stats.st_atime
-                        })
+                        files.append(_CacheFileEntry(
+                            path=entry.path,
+                            size=stats.st_size,
+                            atime=stats.st_atime,
+                        ))
 
             if not files:
                 return
 
-            files.sort(key=lambda x: x["atime"])
+            files.sort(key=lambda x: x.atime)
 
             now = time.time()
             expiry_seconds = self.config.cache_expiry_days * 86400
             size_limit = self.config.max_cache_size_mb * 1024 * 1024
 
-            total_size = sum(f["size"] for f in files)
+            total_size = sum(f.size for f in files)
             deleted_count = 0
 
             # 1. Expiry cleanup
-            remaining_files = []
+            remaining_files: list[_CacheFileEntry] = []
             for f in files:
-                if (now - f["atime"]) > expiry_seconds:
+                if (now - f.atime) > expiry_seconds:
                     try:
-                        os.remove(f["path"])
-                        total_size -= f["size"]
+                        os.remove(f.path)
+                        total_size -= f.size
                         deleted_count += 1
                     except Exception as e:
-                        log.warning(f"[CACHE] Could not delete expired file {f['path']}: {e}")
+                        log.warning(f"[CACHE] Could not delete expired file {f.path}: {e}")
                         remaining_files.append(f)
                 else:
                     remaining_files.append(f)
@@ -272,11 +284,11 @@ class CacheService:
                 if total_size <= size_limit:
                     break
                 try:
-                    os.remove(f["path"])
-                    total_size -= f["size"]
+                    os.remove(f.path)
+                    total_size -= f.size
                     deleted_count += 1
                 except Exception as e:
-                    log.warning(f"[CACHE] Could not delete LRU file {f['path']}: {e}")
+                    log.warning(f"[CACHE] Could not delete LRU file {f.path}: {e}")
 
             if deleted_count > 0:
                 self._path_index.clear()

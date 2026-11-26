@@ -1,5 +1,6 @@
 from services.track_resolver import TrackResolverService
 
+
 def test_sanitize_valid_urls():
     url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     assert TrackResolverService.sanitize_query(url) == url
@@ -23,6 +24,7 @@ def test_sanitize_rejects_overlong_query():
 def test_sanitize_strips_control_characters():
     dirty = "https://youtube.com/watch?v=123\x00\r\n; rm -rf /"
     cleaned = TrackResolverService.sanitize_query(dirty)
+    assert cleaned is not None
     assert "\x00" not in cleaned
     assert "\r" not in cleaned
     assert "\n" not in cleaned

@@ -1,50 +1,51 @@
 import discord
 
+
 class Icons:
     _version: int = 0
-    SUCCESS: discord.PartialEmoji = None
-    ADD: discord.PartialEmoji = None
-    BACK: discord.PartialEmoji = None
-    GEAR: discord.PartialEmoji = None
-    ERROR: discord.PartialEmoji = None
-    CLOSE: discord.PartialEmoji = None
-    DISCONNECT: discord.PartialEmoji = None
-    FOLDER_HEART: discord.PartialEmoji = None
-    GLOBE: discord.PartialEmoji = None
-    HEADPHONES: discord.PartialEmoji = None
-    HEART_MINUS: discord.PartialEmoji = None
-    HEART_PLUS: discord.PartialEmoji = None
-    HELP: discord.PartialEmoji = None
-    HISTORY: discord.PartialEmoji = None
-    IDLE: discord.PartialEmoji = None
-    MOVE_DOWN: discord.PartialEmoji = None
-    MOVE_UP: discord.PartialEmoji = None
-    NEXT: discord.PartialEmoji = None
-    PAUSE: discord.PartialEmoji = None
-    PLAY: discord.PartialEmoji = None
-    PREV: discord.PartialEmoji = None
-    QUEUE: discord.PartialEmoji = None
-    RADIO: discord.PartialEmoji = None
-    REMOVE: discord.PartialEmoji = None
-    SEARCH: discord.PartialEmoji = None
-    SEEK: discord.PartialEmoji = None
-    SKIP: discord.PartialEmoji = None
-    STANDBY: discord.PartialEmoji = None
-    STOP: discord.PartialEmoji = None
-    SWEEP: discord.PartialEmoji = None
-    SYNC: discord.PartialEmoji = None
-    VOLUME: discord.PartialEmoji = None
-    WARNING: discord.PartialEmoji = None
-    BUFFERING: discord.PartialEmoji = None
-    REPEAT: discord.PartialEmoji = None
-    
-    PB_START: discord.PartialEmoji = None
-    PB_LEFT: discord.PartialEmoji = None
-    PB_FULL: discord.PartialEmoji = None
-    PB_KNOB: discord.PartialEmoji = None
-    PB_EMPTY: discord.PartialEmoji = None
-    PB_RIGHT: discord.PartialEmoji = None
-    PB_END: discord.PartialEmoji = None
+    SUCCESS: discord.PartialEmoji
+    ADD: discord.PartialEmoji
+    BACK: discord.PartialEmoji
+    GEAR: discord.PartialEmoji
+    ERROR: discord.PartialEmoji
+    CLOSE: discord.PartialEmoji
+    DISCONNECT: discord.PartialEmoji
+    FOLDER_HEART: discord.PartialEmoji
+    GLOBE: discord.PartialEmoji
+    HEADPHONES: discord.PartialEmoji
+    HEART_MINUS: discord.PartialEmoji
+    HEART_PLUS: discord.PartialEmoji
+    HELP: discord.PartialEmoji
+    HISTORY: discord.PartialEmoji
+    IDLE: discord.PartialEmoji
+    MOVE_DOWN: discord.PartialEmoji
+    MOVE_UP: discord.PartialEmoji
+    NEXT: discord.PartialEmoji
+    PAUSE: discord.PartialEmoji
+    PLAY: discord.PartialEmoji
+    PREV: discord.PartialEmoji
+    QUEUE: discord.PartialEmoji
+    RADIO: discord.PartialEmoji
+    REMOVE: discord.PartialEmoji
+    SEARCH: discord.PartialEmoji
+    SEEK: discord.PartialEmoji
+    SKIP: discord.PartialEmoji
+    STANDBY: discord.PartialEmoji
+    STOP: discord.PartialEmoji
+    SWEEP: discord.PartialEmoji
+    SYNC: discord.PartialEmoji
+    VOLUME: discord.PartialEmoji
+    WARNING: discord.PartialEmoji
+    BUFFERING: discord.PartialEmoji
+    REPEAT: discord.PartialEmoji
+
+    PB_START: discord.PartialEmoji
+    PB_LEFT: discord.PartialEmoji
+    PB_FULL: discord.PartialEmoji
+    PB_KNOB: discord.PartialEmoji
+    PB_EMPTY: discord.PartialEmoji
+    PB_RIGHT: discord.PartialEmoji
+    PB_END: discord.PartialEmoji
 
     @classmethod
     def setup(cls, config):

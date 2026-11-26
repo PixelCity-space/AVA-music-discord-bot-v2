@@ -1,8 +1,11 @@
-import os
 import logging
+import os
 import tempfile
+
 import pytest
-from utils.logger import setup_logging, log, ColoredFormatter
+
+from utils.logger import log, setup_logging
+
 
 @pytest.fixture
 def temp_log_dir():
@@ -59,7 +62,7 @@ def test_no_ansi_in_file_handler_even_after_console_formatting(temp_log_dir, mon
     for h in log.handlers:
         h.flush()
 
-    with open(log_file, "r", encoding="utf-8") as f:
+    with open(log_file, encoding="utf-8") as f:
         content = f.read()
 
     # Content must NOT contain ANSI escape sequences
@@ -83,7 +86,7 @@ def test_unicode_and_emojis_logging(temp_log_dir, monkeypatch):
     for h in log.handlers:
         h.flush()
 
-    with open(log_file, "r", encoding="utf-8") as f:
+    with open(log_file, encoding="utf-8") as f:
         content = f.read()
 
     assert unicode_msg in content
@@ -105,7 +108,7 @@ def test_non_string_and_exception_messages(temp_log_dir, monkeypatch):
     for h in log.handlers:
         h.flush()
 
-    with open(log_file, "r", encoding="utf-8") as f:
+    with open(log_file, encoding="utf-8") as f:
         content = f.read()
 
     assert "Direct exception object" in content
@@ -129,7 +132,7 @@ def test_discord_logger_integration(temp_log_dir, monkeypatch):
     for h in discord_log.handlers:
         h.flush()
 
-    with open(log_file, "r", encoding="utf-8") as f:
+    with open(log_file, encoding="utf-8") as f:
         content = f.read()
 
     assert "Shard 0 connected to Gateway" in content
@@ -150,7 +153,7 @@ def test_asyncio_logger_and_instance_tag(temp_log_dir, monkeypatch):
     for h in asyncio_log.handlers:
         h.flush()
 
-    with open(log_file, "r", encoding="utf-8") as f:
+    with open(log_file, encoding="utf-8") as f:
         content = f.read()
 
     assert "[bot2] [WARNING] Task exception was never retrieved" in content

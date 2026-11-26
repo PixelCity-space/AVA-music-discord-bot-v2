@@ -20,7 +20,7 @@ class EmbedStateManager:
     def _load(self):
         if os.path.exists(self.path):
             try:
-                with open(self.path, "r", encoding="utf-8") as f:
+                with open(self.path, encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
                 log.warning(f"[EMBED_STATE] Failed to load '{self.path}', starting with empty state: {e}")

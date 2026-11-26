@@ -1,19 +1,20 @@
 import copy
+import io
 import logging
-from logging.handlers import RotatingFileHandler
 import os
 import sys
 import threading
-from colorama import init, Fore, Style
+from contextlib import suppress
+from logging.handlers import RotatingFileHandler
+
+from colorama import Fore, Style, init
 
 # Ensure standard console streams handle UTF-8 cleanly on Windows without charmap encoding errors
 if sys.platform == "win32":
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            try:
+        if isinstance(stream, io.TextIOWrapper):
+            with suppress(Exception):
                 stream.reconfigure(encoding="utf-8", errors="replace")
-            except Exception:
-                pass
 
 init(autoreset=True)
 
@@ -66,10 +67,8 @@ def setup_logging(
     for logger in (log, discord_log, asyncio_log):
         for h in list(logger.handlers):
             logger.removeHandler(h)
-            try:
+            with suppress(Exception):
                 h.close()
-            except Exception:
-                pass
 
     inst_tag = f"[{inst}] " if inst else ""
 
@@ -103,7 +102,7 @@ def install_exception_hooks():
         thread_name = args.thread.name if args.thread else "unknown"
         log.critical(
             f"[THREAD] Unhandled exception in thread '{thread_name}': {args.exc_value}",
-            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback) if args.exc_value is not None else None,
         )
 
     threading.excepthook = _thread_excepthook

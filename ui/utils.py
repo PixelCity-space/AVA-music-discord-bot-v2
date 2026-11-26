@@ -1,5 +1,8 @@
-import discord
 import asyncio
+from typing import Any
+
+import discord
+
 from utils.logger import log
 
 _pending_delete_tasks: set[asyncio.Task] = set()
@@ -46,7 +49,7 @@ async def respond(interaction: discord.Interaction, content=None, embed=None, vi
     Handles both initial response and followup automatically.
     If delete_after is provided, the message will be scheduled for deletion.
     """
-    kwargs = {"ephemeral": ephemeral}
+    kwargs: dict[str, Any] = {"ephemeral": ephemeral}
     if content is not None:
         kwargs["content"] = content
     if embed is not None:

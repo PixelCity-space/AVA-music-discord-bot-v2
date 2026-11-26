@@ -1,7 +1,8 @@
 import os
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any
 
 from core.db import (
     CacheRepository,
@@ -51,7 +52,7 @@ class Database:
         self._pool.close()
 
     # --- Cache Methods ---
-    def get_cache(self, url: str) -> Optional[Dict[str, Any]]:
+    def get_cache(self, url: str) -> dict[str, Any] | None:
         return self.cache_repo.get(url)
 
     def set_cache(
@@ -61,7 +62,7 @@ class Database:
         uploader: str,
         duration: int,
         thumbnail_url: str,
-        local_path: Optional[str] = None,
+        local_path: str | None = None,
     ):
         self.cache_repo.set(url, title, uploader, duration, thumbnail_url, local_path=local_path)
 
@@ -71,10 +72,10 @@ class Database:
     def clear_cache_metadata(self):
         self.cache_repo.clear_metadata()
 
-    def get_all_cached_urls(self) -> List[str]:
+    def get_all_cached_urls(self) -> list[str]:
         return self.cache_repo.get_all_cached_urls()
 
-    def cache_song(self, song: Song, local_path: Optional[str] = None):
+    def cache_song(self, song: Song, local_path: str | None = None):
         if song and song.path:
             self.cache_repo.set(
                 url=song.path,
@@ -85,7 +86,7 @@ class Database:
                 local_path=local_path,
             )
 
-    def set_cache_batch(self, songs_data: List[Dict[str, Any]]):
+    def set_cache_batch(self, songs_data: list[dict[str, Any]]):
         self.cache_repo.set_batch(songs_data)
 
     def clear_cache(self):
@@ -104,13 +105,13 @@ class Database:
     def increment_stat(self, key: str):
         self.history_repo.increment_stat(key)
 
-    def get_history_latest(self, offset: int = 0) -> Optional[Song]:
+    def get_history_latest(self, offset: int = 0) -> Song | None:
         return self.history_repo.get_latest(offset=offset)
 
-    def pop_history_latest(self) -> Optional[Song]:
+    def pop_history_latest(self) -> Song | None:
         return self.history_repo.pop_latest()
 
-    def get_history(self, limit: Optional[int] = None) -> List[Song]:
+    def get_history(self, limit: int | None = None) -> list[Song]:
         return self.history_repo.get_all(limit=limit)
 
     def clear_history(self):
@@ -126,7 +127,7 @@ class Database:
     def is_favorite(self, user_id: str, path: str) -> bool:
         return self.favorites_repo.is_favorite(user_id, path)
 
-    def get_favorites(self, user_id: str) -> List[Song]:
+    def get_favorites(self, user_id: str) -> list[Song]:
         return self.favorites_repo.get_all(user_id)
 
     def get_favorite_count(self, user_id: str) -> int:

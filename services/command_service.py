@@ -1,10 +1,12 @@
 from dataclasses import dataclass, replace
-from typing import List, Optional
+
 import discord
+
 from core.actions import RadioAction, RadioState
 from core.models import Song
 from ui.feedback import get_feedback
 from utils.logger import log
+
 
 @dataclass
 class CommandResult:
@@ -25,8 +27,8 @@ class CommandService:
         log.debug(f"[CMD] Rejected '{cmd}' for {getattr(user, 'name', user)}: {reason}")
         return CommandResult(feedback=get_feedback(feedback_key), success=False)
 
-    def play(self, user: discord.Member | discord.User, query: Optional[str] = None) -> CommandResult:
-        if not isinstance(user, discord.Member) or not user.voice:
+    def play(self, user: discord.Member | discord.User, query: str | None = None) -> CommandResult:
+        if not isinstance(user, discord.Member) or not user.voice or not user.voice.channel:
             return self._reject(user, "play", "user not in voice", "no_permission")
 
         if not self.radio.can_interact(user):
@@ -36,8 +38,7 @@ class CommandService:
             if self.radio.status == RadioState.PAUSED:
                 self.radio.dispatch(RadioAction.REPLAY, user=user)
                 return CommandResult(feedback=get_feedback("resuming_feedback"))
-            else:
-                return self._reject(user, "play", f"empty query in status {self.radio.status.name}", "nothing_playing")
+            return self._reject(user, "play", f"empty query in status {self.radio.status.name}", "nothing_playing")
 
         url_strip = query.strip()
         if self.radio.voice_channel_id is None:
@@ -53,8 +54,7 @@ class CommandService:
         if self.radio.status == RadioState.PLAYING:
             self.radio.dispatch(RadioAction.PAUSE, user=user)
             return CommandResult(feedback=get_feedback("pausing"))
-        else:
-            return self._reject(user, "pause", f"invalid status {self.radio.status.name}", "cannot_pause_stopped")
+        return self._reject(user, "pause", f"invalid status {self.radio.status.name}", "cannot_pause_stopped")
 
     def stop(self, user: discord.Member | discord.User) -> CommandResult:
         if not self.radio.can_interact(user):
@@ -123,8 +123,7 @@ class CommandService:
         if 0 <= percent <= 100:
             self.radio.dispatch(RadioAction.SET_VOLUME, percent / 100, user=user)
             return CommandResult(feedback=f"{get_feedback('vol_set')} {percent}%")
-        else:
-            return self._reject(user, "volume", f"out-of-range volume {percent}", "vol_range_error")
+        return self._reject(user, "volume", f"out-of-range volume {percent}", "vol_range_error")
 
     def loop(self, user: discord.Member | discord.User) -> CommandResult:
         if not self.radio.can_interact(user):
@@ -150,7 +149,7 @@ class CommandService:
         return CommandResult(feedback=get_feedback("queue_shuffled"))
 
     def join(self, user: discord.Member | discord.User) -> CommandResult:
-        if not isinstance(user, discord.Member) or not user.voice:
+        if not isinstance(user, discord.Member) or not user.voice or not user.voice.channel:
             return self._reject(user, "join", "user not in voice", "no_permission")
 
         if not self.radio.can_interact(user):
@@ -166,7 +165,7 @@ class CommandService:
         self.radio.dispatch(RadioAction.DISCONNECT, user=user)
         return CommandResult(feedback=get_feedback("severing"))
 
-    def enqueue_songs(self, user: discord.Member | discord.User, songs: List[Song]) -> CommandResult:
+    def enqueue_songs(self, user: discord.Member | discord.User, songs: list[Song]) -> CommandResult:
         if not self.radio.can_interact(user):
             return self._reject(user, "enqueue_songs", "not in same voice channel", "not_in_same_voice")
 

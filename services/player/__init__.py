@@ -1,7 +1,7 @@
-from .voice_manager import VoiceManager
+from .action_handler import PlaybackActionHandler
 from .audio_source import AudioSourceFactory
 from .prefetcher import PrefetchService
-from .action_handler import PlaybackActionHandler
+from .voice_manager import VoiceManager
 
 __all__ = [
     "VoiceManager",

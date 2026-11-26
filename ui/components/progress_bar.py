@@ -4,6 +4,7 @@ Progress bar visual component generating text and emoji-based visual seekbars.
 
 from ui.icons import Icons
 
+
 def create_progress_bar(current: int, total: int, width: int = 18) -> str:
     """Generates a text/emoji-based progress bar."""
     if width <= 0:

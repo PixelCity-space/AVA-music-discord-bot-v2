@@ -1,5 +1,6 @@
 from providers.ytdlp_provider import YTDLPProvider
 
+
 def get_providers(config):
     return [
         YTDLPProvider(

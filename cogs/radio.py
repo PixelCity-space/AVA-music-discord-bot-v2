@@ -4,8 +4,10 @@ Voice channel connectivity and volume slash commands cog for RadioBot.
 
 import discord
 from discord import app_commands
+
 from cogs.base import BaseRadioCog
 from ui.utils import respond
+
 
 class RadioCog(BaseRadioCog):
     """Cog handling voice channel connection, disconnection, and volume adjustment."""

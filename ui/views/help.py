@@ -1,4 +1,5 @@
 import discord
+
 from ui.feedback import get_feedback
 from ui.i18n import t
 from ui.theme import Theme

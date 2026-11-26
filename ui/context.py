@@ -1,6 +1,9 @@
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Optional, Callable, Any
+from typing import Any
+
 import discord
+
 
 @dataclass(frozen=True)
 class UIContext:
@@ -9,11 +12,11 @@ class UIContext:
     Encapsulates Discord client, configuration, and UI update callbacks
     without relying on mutable module-level state.
     """
-    bot: Optional[discord.Client] = None
-    config: Optional[Any] = None
-    update_callback: Optional[Callable] = None
+    bot: discord.Client | None = None
+    config: Any | None = None
+    update_callback: Callable | None = None
 
-    def get_guild(self) -> Optional[discord.Guild]:
+    def get_guild(self) -> discord.Guild | None:
         """Safely fetches the configured guild from the bot client if available."""
         if not self.bot or not self.config:
             return None
@@ -23,7 +26,7 @@ class UIContext:
         return self.bot.get_guild(guild_id)
 
     @property
-    def bot_user(self) -> Optional[discord.ClientUser]:
+    def bot_user(self) -> discord.ClientUser | None:
         """Returns the client's User representation if logged in."""
         if self.bot and hasattr(self.bot, "user"):
             return self.bot.user

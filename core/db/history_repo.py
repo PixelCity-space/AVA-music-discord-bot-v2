@@ -1,4 +1,3 @@
-from typing import List, Optional
 
 from core.db.pool import SQLiteConnectionPool
 from core.models import Song
@@ -11,8 +10,8 @@ class HistoryRepository:
     def __init__(self, pool: SQLiteConnectionPool, max_entries: int = 1000):
         self._pool = pool
         self.max_entries = max_entries
-        self._has_history_cache: Optional[bool] = None
-        self._estimated_count: Optional[int] = None
+        self._has_history_cache: bool | None = None
+        self._estimated_count: int | None = None
 
     def add(self, song: Song):
         try:
@@ -37,7 +36,7 @@ class HistoryRepository:
                         song.thumbnail_url,
                         song.is_external,
                         song.requested_by,
-                        str(song.user_id) if song.user_id else None,
+                        song.user_id or None,
                     ),
                 )
                 if self.max_entries > 0:
@@ -101,7 +100,7 @@ class HistoryRepository:
         except Exception as e:
             log.warning(f"Failed to increment system stat '{key}': {e}")
 
-    def get_latest(self, offset: int = 0) -> Optional[Song]:
+    def get_latest(self, offset: int = 0) -> Song | None:
         if offset < 0:
             return None
         try:
@@ -114,7 +113,7 @@ class HistoryRepository:
             log.error(f"Error getting history item from DB: {e}", exc_info=True)
             return None
 
-    def pop_latest(self) -> Optional[Song]:
+    def pop_latest(self) -> Song | None:
         try:
             with self._pool.get_connection() as conn:
                 cursor = conn.cursor()
@@ -135,7 +134,7 @@ class HistoryRepository:
             log.error(f"Error popping history from DB: {e}", exc_info=True)
             return None
 
-    def get_all(self, limit: Optional[int] = None) -> List[Song]:
+    def get_all(self, limit: int | None = None) -> list[Song]:
         try:
             with self._pool.get_connection() as conn:
                 cursor = conn.cursor()

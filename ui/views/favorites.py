@@ -1,14 +1,16 @@
-from discord.ui import ActionRow, Container, TextDisplay, Separator
-from ui.theme import Theme
+from discord.ui import ActionRow, Container, Separator, TextDisplay
+
+from ui.components.list_controls import (
+    AddAllFavoritesButton,
+    ClearFavoritesButton,
+    FavoriteRemoveButton,
+    SearchResultAddButton,
+)
 from ui.feedback import get_feedback
+from ui.theme import Theme
 from ui.utils import format_duration, truncate
 from ui.views.base import PaginatedView
-from ui.components.list_controls import (
-    SearchResultAddButton, 
-    FavoriteRemoveButton, 
-    AddAllFavoritesButton, 
-    ClearFavoritesButton
-)
+
 
 class FavoritesView(PaginatedView):
     def __init__(self, radio, user_id: str | int, page: int = 0, data_list=None):
@@ -47,5 +49,5 @@ class FavoritesView(PaginatedView):
         new_view = FavoritesView(self.radio, self.user_id, page=self.current_page, data_list=cached_list)
         await interaction.edit_original_response(view=new_view)
 
-    async def paginate_refresh(self, interaction):
+    async def paginate_refresh(self, interaction) -> None:
         await self.refresh_view(interaction, reload=False)

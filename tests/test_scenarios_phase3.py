@@ -5,16 +5,13 @@ FFmpeg Audio Sources, Progress Bar Boundaries, Action Dispatching, and Modal Inp
 """
 
 import asyncio
-import os
-import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
 from cogs.prefix_commands import handle_prefix_commands
-from core.actions import RadioAction, RadioState
-from core.database import Database
+from core.actions import RadioAction
 from core.embed_state import EmbedStateManager
 from core.models import Song
 from core.state import RadioManager
@@ -26,7 +23,6 @@ from ui.components.progress_bar import create_progress_bar
 from ui.icons import Icons
 from ui.modals.seek import SeekModal
 from ui.modals.volume import VolumeModal
-
 
 # =====================================================================
 # Feature 1: Prefix Commands (cogs/prefix_commands.py)
@@ -307,7 +303,7 @@ async def test_scenario_20_ytdlp_timeout_kills_process():
     provider = YTDLPProvider(use_subprocess=True)
     mock_process = AsyncMock()
     mock_process.kill = MagicMock()
-    mock_process.communicate.side_effect = asyncio.TimeoutError()
+    mock_process.communicate.side_effect = TimeoutError()
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         res = await provider.resolve("https://youtube.com/watch?v=hang")

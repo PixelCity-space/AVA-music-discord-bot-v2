@@ -1,12 +1,13 @@
-from .base import BaseView, PaginatedView, handle_ui_error
-from .help import HelpView
-from .player import NowPlayingView
-from .station import FrequencyStationView, WelcomeLayout
 from ui.context import UIContext
-from .queue import FullQueueView
+
+from .base import BaseView, PaginatedView, handle_ui_error
 from .favorites import FavoritesView
+from .help import HelpView
 from .history import HistoryView
+from .player import NowPlayingView
+from .queue import FullQueueView
 from .search_results import SearchResultsView
+from .station import FrequencyStationView, WelcomeLayout
 
 __all__ = [
     "BaseView",

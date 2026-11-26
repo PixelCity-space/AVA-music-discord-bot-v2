@@ -1,11 +1,13 @@
-from discord.ui import ActionRow, Container, TextDisplay, Separator
+from discord.ui import ActionRow, Container, Separator, TextDisplay
+
+from core.models import Song
+from ui.components.list_controls import FavoriteListButton, SearchResultAddButton
+from ui.feedback import get_feedback
 from ui.i18n import t
 from ui.theme import Theme
-from ui.feedback import get_feedback
 from ui.utils import format_duration, truncate
 from ui.views.base import PaginatedView
-from ui.components.list_controls import SearchResultAddButton, FavoriteListButton
-from core.models import Song
+
 
 class SearchResultsView(PaginatedView):
     def __init__(self, radio, results, query=None, user=None, page=0):

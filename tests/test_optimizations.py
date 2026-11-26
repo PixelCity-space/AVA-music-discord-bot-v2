@@ -1,20 +1,32 @@
 import asyncio
 import hashlib
+import logging
 import os
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
+from bot import RadioBot
 from cogs.events import EventsCog
 from core.actions import RadioAction, RadioState
+from core.db.cache_repo import CacheRepository
+from core.db.favorites_repo import FavoritesRepository
 from core.embed_state import EmbedStateManager
 from core.models import Song
 from core.queue_manager import QueueManager
 from providers.ytdlp_provider import YTDLPProvider
 from services.audio_player import RadioPlayer
 from services.cache_service import CacheService
+from services.history import HistoryManager
+from services.player.action_handler import PlaybackActionHandler
+from services.player.voice_manager import VoiceManager
+from tests.conftest import MockMember, MockVoiceChannel
 from ui.manager import UIManager
+from ui.modals.seek import SeekModal
+from ui.modals.volume import VolumeModal
+from ui.utils import safe_fetch_message
 from ui.views.favorites import FavoritesView
 from ui.views.history import HistoryView
 
@@ -245,9 +257,11 @@ async def test_player_preserves_fresh_stream_url_and_skips_ephemeral_download(te
     mock_voice.play.side_effect = immediate_play
     player.bot.loop = asyncio.get_running_loop()
 
-    with patch.object(player.source_factory, "resolve_source", new=AsyncMock(return_value=song.stream_url)):
-        with patch.object(player.source_factory, "create_ffmpeg_source", return_value=MagicMock()):
-            await player._start_playback(mock_voice)
+    with (
+        patch.object(player.source_factory, "resolve_source", new=AsyncMock(return_value=song.stream_url)),
+        patch.object(player.source_factory, "create_ffmpeg_source", return_value=MagicMock()),
+    ):
+        await player._start_playback(mock_voice)
 
     # Fresh stream_url was NOT cleared during seek
     assert song.stream_url == "https://cdn.example.com/fresh"
@@ -381,8 +395,6 @@ async def test_track_resolver_single_shot_search_and_background_notify(test_radi
 
 
 def test_queue_manager_isolated_transitions_and_navigation(test_db):
-    from services.history import HistoryManager
-
     qm = QueueManager()
     hm = HistoryManager(test_db)
     s1 = Song(title="S1", path="http://s1")
@@ -404,7 +416,7 @@ def test_queue_manager_isolated_transitions_and_navigation(test_db):
 
     # Disable loop, enable loop_queue: appends current to end when queue has items
     qm.toggle_loop_queue()
-    assert qm.loop_mode is False and qm.loop_queue_mode is True
+    assert not qm.loop_mode and qm.loop_queue_mode
     cur2, replay = qm.select_next(s2)
     assert cur2 == s1 and replay is False
     assert qm.queue[-1] == s2
@@ -412,12 +424,13 @@ def test_queue_manager_isolated_transitions_and_navigation(test_db):
     # History back + forward navigation
     hm.add(s2)
     back_song = qm.step_back(hm, cur2, during_playback=True)
+    assert back_song is not None
     assert back_song.path == s2.path
     assert qm.future_queue[0] == s1
     assert qm.is_navigating is True
     fwd, replay = qm.select_next(back_song)
     assert fwd == s1 and replay is False
-    assert qm.is_navigating is True
+    assert qm.is_navigating
 
 
 def test_database_facade_exposes_repositories(test_db):
@@ -434,10 +447,6 @@ def test_database_facade_exposes_repositories(test_db):
 
 @pytest.mark.asyncio
 async def test_command_service_unified_seek_enqueue_and_modals(test_radio):
-    from tests.conftest import MockMember, MockVoiceChannel
-    from ui.modals.seek import SeekModal
-    from ui.modals.volume import VolumeModal
-
     vc = MockVoiceChannel(id=42, name="Lounge")
     user = MockMember(id=500, voice_channel=vc, is_admin=False)
     admin = MockMember(id=501, voice_channel=vc, is_admin=True)
@@ -515,9 +524,6 @@ async def test_cache_service_index_avoids_exists_probes_and_clears_async(tmp_pat
 
 
 def test_repositories_true_lru_eviction(test_db):
-    from core.db.cache_repo import CacheRepository
-    from core.db.favorites_repo import FavoritesRepository
-
     cache_repo = CacheRepository(test_db._pool, max_mem_entries=2)
     cache_repo.set("http://a", "A", "Art", 10, "")
     cache_repo.set("http://b", "B", "Art", 10, "")
@@ -573,9 +579,6 @@ async def test_ui_manager_update_progress_skips_station_presence_and_cleaner(tes
 
 @pytest.mark.asyncio
 async def test_action_handler_volume_noop_and_paused_skip_restart(test_radio):
-    from services.player.action_handler import PlaybackActionHandler
-    from services.player.voice_manager import VoiceManager
-
     bot = MagicMock()
     vm = VoiceManager(bot, test_radio.config, test_radio)
     ah = PlaybackActionHandler(bot, test_radio, vm, AsyncMock())
@@ -596,10 +599,6 @@ async def test_action_handler_volume_noop_and_paused_skip_restart(test_radio):
 
 
 def test_embed_state_and_safe_fetch_log_failures(tmp_path, caplog):
-    import logging
-    import discord
-    from ui.utils import safe_fetch_message
-
     corrupt = tmp_path / "corrupt.json"
     corrupt.write_text("{bad json", encoding="utf-8")
     with caplog.at_level(logging.WARNING, logger="RadioBot"):
@@ -619,9 +618,6 @@ def test_embed_state_and_safe_fetch_log_failures(tmp_path, caplog):
 
 @pytest.mark.asyncio
 async def test_voice_manager_switch_channel_preserves_id_and_logs_on_fetch_error(test_radio, caplog):
-    import logging
-    from services.player.voice_manager import VoiceManager
-
     bot = MagicMock()
     bot.get_guild.return_value = None
     bot.fetch_channel = AsyncMock(side_effect=RuntimeError("channel unavailable"))
@@ -636,14 +632,24 @@ async def test_voice_manager_switch_channel_preserves_id_and_logs_on_fetch_error
 
 
 def test_radiobot_loop_exception_handler_logs_traceback(caplog):
-    import logging
-    from bot import RadioBot
-
     exc = RuntimeError("detached task boom")
     with caplog.at_level(logging.ERROR, logger="RadioBot"):
         RadioBot._handle_loop_exception(MagicMock(), {"message": "Task failed", "exception": exc})
 
     assert any("[ASYNCIO] Task failed: detached task boom" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_radiobot_initializes_with_voice_only_member_cache(mock_config, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mock_config.defaults["database_path"] = str(tmp_path / "radio.db")
+    bot = RadioBot(mock_config, instance_name="test")
+    try:
+        assert bot._connection.member_cache_flags.voice is True
+        assert bot._connection.member_cache_flags.joined is False
+    finally:
+        await bot.close()
+
 
 
 

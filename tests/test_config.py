@@ -1,8 +1,11 @@
-import os
 import json
+import os
 import tempfile
+
 import pytest
+
 from utils.config import Config, load_config
+
 
 def test_config_valid(mock_config):
     assert mock_config.token == "test_mock_token_123456789"

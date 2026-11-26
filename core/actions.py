@@ -1,10 +1,7 @@
 from enum import Enum, auto
-from typing import Union, Tuple, List, Optional, TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from core.models import Song
-else:
-    Song = "Song"
+from core.models import Song
+
 
 class RadioState(Enum):
     IDLE = auto()
@@ -44,13 +41,13 @@ class RadioAction(Enum):
     CLEAR_CACHE = auto()
 
 # Type hint for all valid action payload types dispatched to RadioManager / PlaybackActionHandler
-RadioActionData = Optional[Union[
-    str,                              # ADD_EXT_LINK (URL/query), SEEK timestamp string
-    int,                              # JOIN (channel_id), SEEK (seconds)
-    float,                            # SET_VOLUME (fraction 0.0 - 1.0)
-    Song,                             # REMOVE_FROM_QUEUE
-    List[Song],                       # ADD_SONGS
-    Tuple[Song, int],                 # MOVE_SONG (song, direction)
-    Tuple[Union[int, str], Song],     # TOGGLE_FAVORITE (user_id, song)
-    Union[int, str],                  # CLEAR_FAVORITES (user_id)
-]]
+RadioActionData = (
+    str                               # ADD_EXT_LINK (URL/query), SEEK timestamp string
+    | int                             # JOIN (channel_id), SEEK (seconds)
+    | float                           # SET_VOLUME (fraction 0.0 - 1.0)
+    | Song                            # REMOVE_FROM_QUEUE
+    | list[Song]                      # ADD_SONGS
+    | tuple[Song, int]                # MOVE_SONG (song, direction)
+    | tuple[int | str, Song]          # TOGGLE_FAVORITE (user_id, song)
+    | None
+)

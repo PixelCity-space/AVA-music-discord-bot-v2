@@ -1,20 +1,24 @@
 import asyncio
 import inspect
+from collections.abc import Callable
+from contextlib import suppress
+
 import discord
-from typing import List, Optional, Callable
-from core.actions import RadioState, RadioAction, RadioActionData
-from core.models import Song
-from core.embed_state import EmbedStateManager
+
+from core.actions import RadioAction, RadioActionData, RadioState
 from core.database import Database
+from core.embed_state import EmbedStateManager
+from core.models import Song
 from core.queue_manager import QueueManager
+from providers import get_providers
+from services.cache_service import CacheService
+from services.command_service import CommandService
 from services.favorites import FavoriteManager
 from services.history import HistoryManager
-from services.cache_service import CacheService
 from services.permissions import PermissionService
-from services.command_service import CommandService
 from services.track_resolver import TrackResolverService
-from providers import get_providers
 from utils.logger import log
+
 
 class RadioManager:
     """
@@ -37,16 +41,16 @@ class RadioManager:
         self.resolver = TrackResolverService(self.db, self.providers)
         
         # Connection State
-        self.voice: Optional[discord.VoiceClient] = None
-        self.voice_channel_id: Optional[int] = None
+        self.voice: discord.VoiceClient | None = None
+        self.voice_channel_id: int | None = None
         
         # Playback & Queue State
         self.status = RadioState.IDLE
-        self.current_song: Optional[Song] = None
+        self.current_song: Song | None = None
         self.queue_manager = QueueManager()
         self.volume: float = config.default_volume
-        self.station_message: Optional[discord.Message] = None
-        self.now_playing_message: Optional[discord.Message] = None
+        self.station_message: discord.Message | None = None
+        self.now_playing_message: discord.Message | None = None
 
         # UI State
         self.language: str = config.default_language
@@ -56,22 +60,22 @@ class RadioManager:
         self.volume_muted: bool = False
         
         # Progress Tracking
-        self.track_start_time: Optional[float] = None
+        self.track_start_time: float | None = None
         self.track_start_offset: float = 0.0
-        self.seek_position: Optional[float] = None
+        self.seek_position: float | None = None
         self.is_seeking: bool = False
         
         # Internal Queues & Locks
         self.action_queue = asyncio.Queue()
         self._action_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
-        self.last_user: Optional[discord.Member | discord.User] = None
-        self.task: Optional[asyncio.Task] = None
+        self.last_user: discord.Member | discord.User | None = None
+        self.task: asyncio.Task | None = None
 
         # Callbacks (set by UIManager / Player)
-        self.on_state_change: Optional[Callable] = None
+        self.on_state_change: Callable | None = None
 
-    def create_task(self, coro, name: Optional[str] = None) -> asyncio.Task:
+    def create_task(self, coro, name: str | None = None) -> asyncio.Task:
         """Creates, retains strong reference, and tracks a background task with unhandled exception logging."""
         task = asyncio.create_task(coro, name=name)
         self._background_tasks.add(task)
@@ -104,19 +108,19 @@ class RadioManager:
 
     # --- Queue & Navigation delegates (backward-compatible properties) ---
     @property
-    def queue(self) -> List[Song]:
+    def queue(self) -> list[Song]:
         return self.queue_manager.queue
 
     @queue.setter
-    def queue(self, value: List[Song]):
+    def queue(self, value: list[Song]):
         self.queue_manager.queue = value
 
     @property
-    def future_queue(self) -> List[Song]:
+    def future_queue(self) -> list[Song]:
         return self.queue_manager.future_queue
 
     @future_queue.setter
-    def future_queue(self, value: List[Song]):
+    def future_queue(self, value: list[Song]):
         self.queue_manager.future_queue = value
 
     @property
@@ -156,10 +160,8 @@ class RadioManager:
         """Returns the current playback elapsed time in seconds."""
         elapsed = self.track_start_offset
         if self.track_start_time and self.status == RadioState.PLAYING:
-            try:
+            with suppress(RuntimeError):
                 elapsed += (asyncio.get_running_loop().time() - self.track_start_time)
-            except RuntimeError:
-                pass
         return elapsed
 
     @property
@@ -168,7 +170,7 @@ class RadioManager:
         return self.history_manager.has_items()
 
     @property
-    def history(self) -> List[Song]:
+    def history(self) -> list[Song]:
         return self.history_manager.history
 
     # --- Permission delegates ---
@@ -182,7 +184,7 @@ class RadioManager:
     def is_cached(self, song: Song) -> bool:
         return self.cache_service.is_cached(song)
 
-    def get_cache_path(self, song: Song) -> Optional[str]:
+    def get_cache_path(self, song: Song) -> str | None:
         return self.cache_service.get_cache_path(song)
 
     async def start_cache_download(self, song: Song):
@@ -211,7 +213,7 @@ class RadioManager:
                 self.on_state_change(self.current_song)
 
     # --- Action Dispatcher ---
-    def dispatch(self, action: RadioAction, data: RadioActionData = None, user: Optional[discord.Member | discord.User] = None):
+    def dispatch(self, action: RadioAction, data: RadioActionData = None, user: discord.Member | discord.User | None = None):
         user_str = f" by {user.name}" if user else " (System/Auto)"
         data_str = f" with [{data}]" if data is not None else ""
         log.info(f"[ACTION] {action.name}{data_str}{user_str}")
@@ -226,54 +228,61 @@ class RadioManager:
         self.action_queue.put_nowait((action, data))
         self._action_event.set()
 
-    def _handle_state_action(self, action: RadioAction, data: RadioActionData, user: Optional[discord.Member | discord.User] = None) -> bool:
+    def _handle_state_action(self, action: RadioAction, data: RadioActionData, user: discord.Member | discord.User | None = None) -> bool:
         """Handles non-audio state, queue, and database actions directly in RadioManager."""
         if action == RadioAction.ADD_EXT_LINK:
-            self.create_task(self._add_external_link(data, user=user or self.last_user), name="add_ext_link")
+            if isinstance(data, str):
+                self.create_task(self._add_external_link(data, user=user or self.last_user), name="add_ext_link")
             return True
-        elif action == RadioAction.ADD_SONGS:
-            self.create_task(self._add_songs(data, user=user or self.last_user), name="add_songs")
+        if action == RadioAction.ADD_SONGS:
+            if isinstance(data, list):
+                self.create_task(self._add_songs(data, user=user or self.last_user), name="add_songs")
             return True
-        elif action == RadioAction.REMOVE_FROM_QUEUE:
-            self.queue_manager.remove(data)
-            self._notify_state_change()
+        if action == RadioAction.REMOVE_FROM_QUEUE:
+            if isinstance(data, Song):
+                self.queue_manager.remove(data)
+                self._notify_state_change()
             return True
-        elif action == RadioAction.CLEAR_QUEUE:
+        if action == RadioAction.CLEAR_QUEUE:
             self.queue_manager.clear()
             self._notify_state_change()
             return True
-        elif action == RadioAction.MOVE_SONG:
-            song, direction = data
-            if self.queue_manager.move(song, direction):
+        if action == RadioAction.MOVE_SONG:
+            if isinstance(data, tuple) and len(data) == 2:
+                song, direction = data
+                if isinstance(song, Song) and isinstance(direction, int) and self.queue_manager.move(song, direction):
+                    self._notify_state_change()
+            return True
+        if action == RadioAction.TOGGLE_FAVORITE:
+            if isinstance(data, tuple) and len(data) == 2:
+                user_id, fav_song = data
+                if isinstance(user_id, (int, str)) and isinstance(fav_song, Song):
+                    self.fav_manager.toggle_favorite(str(user_id), fav_song)
+                    self._notify_state_change()
+            return True
+        if action == RadioAction.CLEAR_FAVORITES:
+            if isinstance(data, (int, str)):
+                self.fav_manager.clear_favorites(str(data))
                 self._notify_state_change()
             return True
-        elif action == RadioAction.TOGGLE_FAVORITE:
-            user_id, song = data
-            self.fav_manager.toggle_favorite(user_id, song)
-            self._notify_state_change()
-            return True
-        elif action == RadioAction.CLEAR_FAVORITES:
-            self.fav_manager.clear_favorites(data)
-            self._notify_state_change()
-            return True
-        elif action == RadioAction.CLEAR_HISTORY:
+        if action == RadioAction.CLEAR_HISTORY:
             self.history_manager.clear()
             self.queue_manager.reset_navigation()
             self._notify_state_change()
             return True
-        elif action == RadioAction.CLEAR_CACHE:
+        if action == RadioAction.CLEAR_CACHE:
             self.clear_cache()
             self._notify_state_change()
             return True
-        elif action == RadioAction.LOOP:
+        if action == RadioAction.LOOP:
             self.queue_manager.toggle_loop()
             self._notify_state_change()
             return True
-        elif action == RadioAction.LOOP_QUEUE:
+        if action == RadioAction.LOOP_QUEUE:
             self.queue_manager.toggle_loop_queue()
             self._notify_state_change()
             return True
-        elif action == RadioAction.SHUFFLE:
+        if action == RadioAction.SHUFFLE:
             self.queue_manager.shuffle()
             self._notify_state_change()
             return True
@@ -285,7 +294,7 @@ class RadioManager:
             self.status = RadioState.PLAYING
             self._action_event.set()
 
-    async def _add_external_link(self, query: str, user: Optional[discord.Member | discord.User] = None):
+    async def _add_external_link(self, query: str, user: discord.Member | discord.User | None = None):
         """Adds an external link or search query to queue via TrackResolverService."""
         sanitized = self.resolver.sanitize_query(query)
         if not sanitized:
@@ -312,7 +321,7 @@ class RadioManager:
         self._wake_player_if_idle()
         self._notify_state_change()
 
-    async def _add_songs(self, songs: List[Song], user: Optional[discord.Member | discord.User] = None):
+    async def _add_songs(self, songs: list[Song] | None, user: discord.Member | discord.User | None = None):
         if not songs:
             return
         for song in songs:
@@ -325,7 +334,7 @@ class RadioManager:
         self._wake_player_if_idle()
         self._notify_state_change()
 
-    async def _resolve_playlist_task(self, url: str, user: Optional[discord.Member | discord.User] = None):
+    async def _resolve_playlist_task(self, url: str, user: discord.Member | discord.User | None = None):
         songs = await self.resolver.resolve_playlist(url, user=user)
         if not songs:
             log.debug(f"[QUEUE] Playlist resolution yielded 0 tracks for: {url}")

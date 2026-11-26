@@ -1,5 +1,7 @@
 import discord
+
 from core.actions import RadioState
+
 
 class PermissionService:
     def __init__(self, config):
@@ -18,10 +20,7 @@ class PermissionService:
         user_role_ids = [getattr(r, "id", r) for r in user_roles]
         if self.config.admin_role_id > 0 and self.config.admin_role_id in user_role_ids:
             return True
-        if self.config.sysadmin_role_id > 0 and self.config.sysadmin_role_id in user_role_ids:
-            return True
-        
-        return False
+        return self.config.sysadmin_role_id > 0 and self.config.sysadmin_role_id in user_role_ids
 
     def can_interact(self, user: discord.Member | discord.User, radio) -> bool:
         """
@@ -49,7 +48,4 @@ class PermissionService:
             return False
 
         # Must be in the same voice channel if the bot is active
-        if user_voice.channel.id != radio.voice.channel.id:
-            return False
-
-        return True
+        return user_voice.channel.id == radio.voice.channel.id

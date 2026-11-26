@@ -1,9 +1,9 @@
-from .manager import UIManager
-from .icons import Icons
-from .theme import Theme
-from .i18n import t, load_locales, init_translate
 from .feedback import get_feedback
-from .utils import respond, format_duration, delayed_delete
+from .i18n import init_translate, load_locales, t
+from .icons import Icons
+from .manager import UIManager
+from .theme import Theme
+from .utils import delayed_delete, format_duration, respond
 
 __all__ = [
     "UIManager",

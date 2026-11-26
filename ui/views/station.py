@@ -1,5 +1,6 @@
-from typing import Optional
+
 from discord.ui import ActionRow, Container, TextDisplay
+
 from ui.components.list_controls import HistoryButton, LibraryButton
 from ui.components.player_controls import (
     DisconnectButton,
@@ -15,7 +16,7 @@ from ui.theme import Theme
 from ui.views.base import BaseView
 
 
-def _add_station_controls(container: Container, radio, context: Optional[UIContext], prefix: str, tail_button):
+def _add_station_controls(container: Container, radio, context: UIContext | None, prefix: str, tail_button):
     """Populates shared voice-channel, language, UI-style, and library rows onto a station container."""
     guild = context.get_guild() if context else None
     if not guild:
@@ -47,7 +48,7 @@ def _add_station_controls(container: Container, radio, context: Optional[UIConte
 class WelcomeLayout(BaseView):
     """Persistent standby station view shown when the bot is not connected to a voice channel."""
 
-    def __init__(self, radio, context: Optional[UIContext] = None):
+    def __init__(self, radio, context: UIContext | None = None):
         super().__init__(radio)
         self.context = context
 
@@ -65,7 +66,7 @@ class WelcomeLayout(BaseView):
 class FrequencyStationView(BaseView):
     """Persistent station settings view shown while the bot is connected to a voice channel."""
 
-    def __init__(self, radio, context: Optional[UIContext] = None):
+    def __init__(self, radio, context: UIContext | None = None):
         super().__init__(radio)
         self.context = context
 

@@ -1,13 +1,17 @@
-import os
 import asyncio
+import os
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
 import discord
-from typing import Optional, Callable, TYPE_CHECKING
-from core.actions import RadioAction, RadioState, RadioActionData
+
+from core.actions import RadioAction, RadioActionData, RadioState
 from core.models import Song
 from utils.logger import log
 
 if TYPE_CHECKING:
     from core.state import RadioManager
+
     from .voice_manager import VoiceManager
 
 class PlaybackActionHandler:
@@ -28,36 +32,37 @@ class PlaybackActionHandler:
 
     async def handle_disconnected_action(self, action: RadioAction, data: RadioActionData) -> bool:
         """Handles actions when voice is disconnected."""
-        if action == RadioAction.JOIN:
+        if action == RadioAction.JOIN and isinstance(data, int):
             log.info(f"[PLAYER] Joining voice channel from disconnected state: {data}")
             self.radio.voice_channel_id = data
             self.radio.status = RadioState.PLAYING
             return True
-        elif action == RadioAction.DISCONNECT:
+        if action == RadioAction.DISCONNECT:
             log.debug("[PLAYER] Disconnect requested while already disconnected; cleaning up state.")
             await self.voice_manager.disconnect(None)
             return True
-        elif action == RadioAction.RESTART:
+        if action == RadioAction.RESTART:
             await self.handle_restart()
             return True
         log.debug(f"[PLAYER] Ignored action {action.name} while disconnected.")
         return False
 
-    async def handle_idle_action(self, action: RadioAction, data: RadioActionData, voice: Optional[discord.VoiceClient]) -> bool:
+    async def handle_idle_action(self, action: RadioAction, data: RadioActionData, voice: discord.VoiceClient | None) -> bool:
         """Handles actions when voice is connected but in IDLE, PAUSED, or STOPPED state."""
-        if action == RadioAction.SET_VOLUME:
-            log.info(f"[PLAYER] Idle volume set to: {int(float(data) * 100)}%")
-            self.radio.volume = data
+        if action == RadioAction.SET_VOLUME and isinstance(data, (int, float)):
+            vol = float(data)
+            log.info(f"[PLAYER] Idle volume set to: {int(vol * 100)}%")
+            self.radio.volume = vol
             return True
-        elif action == RadioAction.JOIN:
+        if action == RadioAction.JOIN and isinstance(data, (int, str)):
             await self.voice_manager.switch_channel(int(data), voice)
             await self.update_ui(self.radio.current_song)
             return True
-        elif action == RadioAction.DISCONNECT:
+        if action == RadioAction.DISCONNECT:
             log.info("[PLAYER] Disconnecting from idle state.")
             await self.voice_manager.disconnect(voice)
             return True
-        elif action == RadioAction.REPLAY:
+        if action == RadioAction.REPLAY:
             if self.radio.status == RadioState.STOPPED and self.radio.current_song:
                 log.info(f"[PLAYER] Replaying stopped track: {self.radio.current_song.title}")
                 self.radio.is_seeking = True
@@ -87,10 +92,11 @@ class PlaybackActionHandler:
                 return False
             log.debug("[PLAYER] Back ignored in idle state: no history item found.")
             return True
-        elif action == RadioAction.SEEK:
-            log.info(f"[PLAYER] Idle Seeking to: {data}s")
-            self.radio.seek_position = data
-            self.radio.track_start_offset = data
+        elif action == RadioAction.SEEK and isinstance(data, (int, float)):
+            pos = float(data)
+            log.info(f"[PLAYER] Idle Seeking to: {pos}s")
+            self.radio.seek_position = pos
+            self.radio.track_start_offset = pos
             self.radio.is_seeking = True
             await self.update_ui(self.radio.current_song)
             return True
@@ -105,7 +111,7 @@ class PlaybackActionHandler:
         return False
 
     async def handle_playback_action(self, action: RadioAction, data: RadioActionData, 
-                                     voice: discord.VoiceClient, song: Optional[Song]) -> bool:
+                                     voice: discord.VoiceClient, song: Song | None) -> bool:
         """Handles actions received while audio is actively streaming."""
         if action == RadioAction.SKIP:
             log.info("[PLAYER] Skipping current track.")
@@ -113,17 +119,18 @@ class PlaybackActionHandler:
             self.radio.is_seeking = False
             voice.stop()
             return True
-        elif action == RadioAction.SEEK:
-            log.info(f"[PLAYER] Seeking to: {data}s")
-            self.radio.seek_position = data
+        if action == RadioAction.SEEK and isinstance(data, (int, float)):
+            pos = float(data)
+            log.info(f"[PLAYER] Seeking to: {pos}s")
+            self.radio.seek_position = pos
             self.radio.is_seeking = True
             if self.radio.status == RadioState.PAUSED:
-                self.radio.track_start_offset = data
+                self.radio.track_start_offset = pos
             voice.stop()
             if self.radio.status == RadioState.PAUSED:
                 await self.update_ui(song)
             return True
-        elif action == RadioAction.SET_VOLUME:
+        if action == RadioAction.SET_VOLUME and isinstance(data, (int, float)):
             new_vol = float(data)
             if abs(new_vol - float(self.radio.volume)) < 1e-6:
                 log.debug(f"[PLAYER] Volume unchanged ({int(new_vol * 100)}%); skipping FFmpeg restart.")
@@ -143,7 +150,7 @@ class PlaybackActionHandler:
             self.radio.is_seeking = True
             voice.stop()
             return True
-        elif action == RadioAction.PAUSE:
+        if action == RadioAction.PAUSE:
             if voice.is_playing():
                 log.info("[PLAYER] Pausing playback.")
                 voice.pause()
@@ -152,7 +159,7 @@ class PlaybackActionHandler:
                 self.radio.status = RadioState.PAUSED
                 await self.update_ui(song)
             return False
-        elif action == RadioAction.REPLAY:
+        if action == RadioAction.REPLAY:
             if self.radio.status == RadioState.PAUSED:
                 log.info("[PLAYER] Resuming playback.")
                 voice.resume()
@@ -160,13 +167,12 @@ class PlaybackActionHandler:
                 self.radio.status = RadioState.PLAYING
                 await self.update_ui(song)
                 return False
-            else:
-                log.info("[PLAYER] Replaying track from start.")
-                self.radio.seek_position = 0
-                self.radio.is_seeking = True
-                voice.stop()
-                return True
-        elif action == RadioAction.BACK:
+            log.info("[PLAYER] Replaying track from start.")
+            self.radio.seek_position = 0
+            self.radio.is_seeking = True
+            voice.stop()
+            return True
+        if action == RadioAction.BACK:
             elapsed = self.radio.elapsed_seconds
 
             if elapsed > 10.0:
@@ -191,7 +197,7 @@ class PlaybackActionHandler:
             self.radio.is_seeking = True
             voice.stop()
             return True
-        elif action == RadioAction.STOP:
+        if action == RadioAction.STOP:
             log.info("[PLAYER] Stopping playback.")
             self.radio.status = RadioState.STOPPED
             self.radio.track_start_offset = 0.0
@@ -199,14 +205,14 @@ class PlaybackActionHandler:
             voice.stop()
             await self.update_ui(song)
             return True
-        elif action == RadioAction.JOIN:
+        if action == RadioAction.JOIN and isinstance(data, (int, str)):
             await self.voice_manager.switch_channel(int(data), voice)
             await self.update_ui(song)
             return False
-        elif action == RadioAction.DISCONNECT:
+        if action == RadioAction.DISCONNECT:
             await self.voice_manager.disconnect(voice)
             return True
-        elif action == RadioAction.RESTART:
+        if action == RadioAction.RESTART:
             await self.handle_restart()
             return True
         return False

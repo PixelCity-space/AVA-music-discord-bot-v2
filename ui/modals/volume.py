@@ -1,10 +1,12 @@
 import discord
 from discord.ui import Modal, TextInput
-from ui.icons import Icons
-from ui.i18n import t
+
 from ui.feedback import get_feedback
+from ui.i18n import t
+from ui.icons import Icons
 from ui.utils import respond
 from ui.views.base import handle_ui_error
+
 
 class VolumeButton(discord.ui.Button):
     def __init__(self, radio):

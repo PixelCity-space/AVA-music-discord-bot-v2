@@ -1,13 +1,14 @@
+import argparse
 import asyncio
 import json
-import os
-import sys
-import re
-import argparse
 import logging
+import os
+import re
+import sys
+
+from bot import RadioBot
 from utils.config import load_config
 from utils.logger import install_exception_hooks, log, setup_logging
-from bot import RadioBot
 
 EXIT_CODE_RESTART = 42
 

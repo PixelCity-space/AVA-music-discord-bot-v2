@@ -1,10 +1,16 @@
-from discord.ui import ActionRow, Container, TextDisplay, Separator
-from ui.theme import Theme
+from discord.ui import ActionRow, Container, Separator, TextDisplay
+
+from core.models import Song
+from ui.components.list_controls import (
+    ClearHistoryButton,
+    FavoriteListButton,
+    SearchResultAddButton,
+)
 from ui.feedback import get_feedback
+from ui.theme import Theme
 from ui.utils import format_duration, truncate
 from ui.views.base import PaginatedView
-from ui.components.list_controls import SearchResultAddButton, FavoriteListButton, ClearHistoryButton
-from core.models import Song
+
 
 class HistoryView(PaginatedView):
     def __init__(self, radio, page: int = 0, user=None, data_list=None):
@@ -50,5 +56,5 @@ class HistoryView(PaginatedView):
         new_view = HistoryView(self.radio, page=self.current_page, user=self.user, data_list=cached_list)
         await interaction.edit_original_response(view=new_view)
 
-    async def paginate_refresh(self, interaction):
+    async def paginate_refresh(self, interaction) -> None:
         await self.refresh_view(interaction, reload=False)

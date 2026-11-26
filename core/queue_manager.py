@@ -1,5 +1,5 @@
 import random
-from typing import List, Optional, Tuple
+
 from core.models import Song
 
 
@@ -10,8 +10,8 @@ class QueueManager:
     """
 
     def __init__(self):
-        self.queue: List[Song] = []
-        self.future_queue: List[Song] = []
+        self.queue: list[Song] = []
+        self.future_queue: list[Song] = []
         self.is_navigating: bool = False
         self.history_ptr: int = 0
         self.loop_mode: bool = False
@@ -20,7 +20,7 @@ class QueueManager:
     def enqueue(self, song: Song):
         self.queue.append(song)
 
-    def enqueue_many(self, songs: List[Song]):
+    def enqueue_many(self, songs: list[Song]):
         self.queue.extend(songs)
 
     def remove(self, song: Song) -> bool:
@@ -65,14 +65,14 @@ class QueueManager:
     def has_next(self) -> bool:
         return bool(self.queue or self.future_queue or self.is_navigating)
 
-    def peek_next(self) -> Optional[Song]:
+    def peek_next(self) -> Song | None:
         if self.future_queue:
             return self.future_queue[0]
         if self.queue:
             return self.queue[0]
         return None
 
-    def select_next(self, current_song: Optional[Song]) -> Tuple[Optional[Song], bool]:
+    def select_next(self, current_song: Song | None) -> tuple[Song | None, bool]:
         """
         Selects the next song to play (or signals replaying the current track).
         Returns (selected_song, should_replay_from_start).
@@ -99,7 +99,7 @@ class QueueManager:
 
         return None, False
 
-    def step_back(self, history_manager, current_song: Optional[Song], during_playback: bool) -> Optional[Song]:
+    def step_back(self, history_manager, current_song: Song | None, during_playback: bool) -> Song | None:
         """
         Navigates one step backward in history, pushing current_song onto future_queue.
         Returns the historical Song if available, otherwise None.

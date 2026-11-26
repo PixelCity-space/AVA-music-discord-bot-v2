@@ -1,28 +1,29 @@
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Any
+
 
 @dataclass
 class Song:
     path: str  # The playback URL or file path
-    title: Optional[str] = None
-    uploader: Optional[str] = None
+    title: str | None = None
+    uploader: str | None = None
     duration: int = 0
-    thumbnail_url: Optional[str] = None
-    webpage_url: Optional[str] = None
-    source: Optional[str] = None
-    requested_by: Optional[str] = None  # Mention string or name
-    user_id: Optional[str] = None       # Snowflake ID for stats
-    played_at: Optional[str] = None     # Timestamp when it was played
+    thumbnail_url: str | None = None
+    webpage_url: str | None = None
+    source: str | None = None
+    requested_by: str | None = None  # Mention string or name
+    user_id: str | None = None       # Snowflake ID for stats
+    played_at: str | None = None     # Timestamp when it was played
     
     # Internal state
     is_resolving: bool = False
     is_external: bool = False
-    stream_url: Optional[str] = None
-    http_headers: Optional[Dict[str, str]] = None
-    stream_resolved_at: Optional[float] = field(default=None, repr=False, compare=False)
-    _resolve_event: Optional[asyncio.Event] = field(default=None, repr=False, compare=False)
+    stream_url: str | None = None
+    http_headers: dict[str, str] | None = None
+    stream_resolved_at: float | None = field(default=None, repr=False, compare=False)
+    _resolve_event: asyncio.Event | None = field(default=None, repr=False, compare=False)
 
     @property
     def resolve_event(self) -> asyncio.Event:
@@ -33,7 +34,7 @@ class Song:
         return self._resolve_event
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Song":
+    def from_dict(cls, data: dict[str, Any]) -> "Song":
         """Factory method to create a Song object from a dictionary."""
         uploader = data.get("uploader") or data.get("artist") or data.get("channel")
         
@@ -54,14 +55,14 @@ class Song:
             played_at=data.get("played_at")
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert back to dict."""
         d = dict(self.__dict__)
         d.pop("_resolve_event", None)
         d.pop("stream_resolved_at", None)
         return d
     
-    def update(self, data: Dict[str, Any]):
+    def update(self, data: dict[str, Any]):
         """Update fields from a dictionary with priority mapping."""
         # 1. Direct field mapping
         for key, value in data.items():
@@ -89,7 +90,7 @@ class Song:
         if not self.is_resolving and self._resolve_event is not None:
             self._resolve_event.set()
 
-    def cache_to_db(self, db, local_path: Optional[str] = None):
+    def cache_to_db(self, db, local_path: str | None = None):
         """Persists the song metadata to SQLite cache using the provided Database instance."""
         if not self.path or not self.path.strip() or not db:
             return

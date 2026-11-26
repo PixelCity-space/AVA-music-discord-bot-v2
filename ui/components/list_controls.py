@@ -2,16 +2,18 @@
 Interactive Discord UI buttons for playlist, queue, favorites, and history manipulation.
 """
 
+
 import discord
-from typing import Optional, List
-from ui.icons import Icons
-from ui.i18n import t
-from ui.feedback import get_feedback
-from ui.utils import respond
-from ui.views.base import handle_ui_error
+
 from core.actions import RadioAction, RadioState
 from core.models import Song
+from ui.feedback import get_feedback
+from ui.i18n import t
+from ui.icons import Icons
+from ui.utils import respond
+from ui.views.base import PaginatedView, handle_ui_error
 from utils.logger import log
+
 
 class SearchResultAddButton(discord.ui.Button):
     """Button to enqueue a track directly from search results."""
@@ -28,7 +30,7 @@ class SearchResultAddButton(discord.ui.Button):
 
 class FavoriteListButton(discord.ui.Button):
     """Button to toggle favorite status of a song within a list view."""
-    def __init__(self, radio, song: Song, user_id: Optional[int] = None):
+    def __init__(self, radio, song: Song, user_id: int | None = None):
         as_fav = False
         if user_id:
             as_fav = radio.fav_manager.is_favorite(user_id, song)
@@ -49,7 +51,7 @@ class FavoriteListButton(discord.ui.Button):
             await interaction.response.defer(ephemeral=True)
 
         try:
-            if hasattr(self.view, 'refresh_view'):
+            if isinstance(self.view, PaginatedView):
                 await self.view.refresh_view(interaction)
             else:
                 await interaction.edit_original_response(view=self.view)
@@ -70,7 +72,7 @@ class FavoriteRemoveButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         self.radio.fav_manager.toggle_favorite(interaction.user.id, self.song)
         await interaction.response.defer(ephemeral=True)
-        if hasattr(self.view, 'refresh_view'):
+        if isinstance(self.view, PaginatedView):
             await self.view.refresh_view(interaction)
         await respond(interaction, get_feedback('removed_from_fav'), delete_after=self.radio.config.notification_timeout)
 
@@ -87,13 +89,13 @@ class LibraryButton(discord.ui.Button):
 
     @handle_ui_error
     async def callback(self, interaction: discord.Interaction):
-        from ui.views.favorites import FavoritesView
+        from ui.views.favorites import FavoritesView  # noqa: PLC0415
         view = FavoritesView(self.radio, interaction.user.id)
         await interaction.response.send_message(view=view, ephemeral=True)
 
 class AddAllFavoritesButton(discord.ui.Button):
     """Button to enqueue all tracks from user's favorites into the playback queue."""
-    def __init__(self, radio, songs: List[Song]):
+    def __init__(self, radio, songs: list[Song]):
         super().__init__(
             label=t("add_all_to_queue"),
             emoji=Icons.QUEUE,
@@ -123,7 +125,7 @@ class ClearFavoritesButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         self.radio.dispatch(RadioAction.CLEAR_FAVORITES, self.user_id, user=interaction.user)
         await interaction.response.defer()
-        if hasattr(self.view, 'refresh_view'):
+        if isinstance(self.view, PaginatedView):
             self.view.current_page = 0
             self.view.data_list = []
             await self.view.refresh_view(interaction)
@@ -143,7 +145,7 @@ class HistoryButton(discord.ui.Button):
 
     @handle_ui_error
     async def callback(self, interaction: discord.Interaction):
-        from ui.views.history import HistoryView
+        from ui.views.history import HistoryView  # noqa: PLC0415
         view = HistoryView(self.radio, user=interaction.user)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -165,7 +167,7 @@ class ClearHistoryButton(discord.ui.Button):
             return
 
         await interaction.response.defer()
-        if hasattr(self.view, 'refresh_view'):
+        if isinstance(self.view, PaginatedView):
             self.view.current_page = 0
             self.view.data_list = []
             await self.view.refresh_view(interaction)
@@ -187,7 +189,7 @@ class QueueViewButton(discord.ui.Button):
 
     @handle_ui_error
     async def callback(self, interaction: discord.Interaction):
-        from ui.views.queue import FullQueueView
+        from ui.views.queue import FullQueueView  # noqa: PLC0415
         view = FullQueueView(self.radio, page=0, user=interaction.user)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -202,7 +204,7 @@ class RemoveFromQueueButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         self.radio.dispatch(RadioAction.REMOVE_FROM_QUEUE, self.song, user=interaction.user)
-        if hasattr(self.view, 'refresh_view'):
+        if isinstance(self.view, PaginatedView):
             await self.view.refresh_view(interaction)
 
 class ClearQueueButton(discord.ui.Button):
@@ -215,7 +217,7 @@ class ClearQueueButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         self.radio.dispatch(RadioAction.CLEAR_QUEUE, user=interaction.user)
-        if hasattr(self.view, 'refresh_view'):
+        if isinstance(self.view, PaginatedView):
             self.view.current_page = 0
             await self.view.refresh_view(interaction)
 
@@ -230,7 +232,7 @@ class MoveUpButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         self.radio.dispatch(RadioAction.MOVE_SONG, (self.song, -1), user=interaction.user)
-        if hasattr(self.view, 'refresh_view'):
+        if isinstance(self.view, PaginatedView):
             await self.view.refresh_view(interaction)
 
 class MoveDownButton(discord.ui.Button):
@@ -244,5 +246,5 @@ class MoveDownButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         self.radio.dispatch(RadioAction.MOVE_SONG, (self.song, 1), user=interaction.user)
-        if hasattr(self.view, 'refresh_view'):
+        if isinstance(self.view, PaginatedView):
             await self.view.refresh_view(interaction)

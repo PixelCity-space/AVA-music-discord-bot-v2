@@ -1,10 +1,12 @@
 import discord
 from discord.ui import LayoutView
-from ui.icons import Icons
-from ui.i18n import t
+
 from ui.feedback import get_feedback
+from ui.i18n import t
+from ui.icons import Icons
 from ui.utils import schedule_delete
 from utils.logger import log
+
 
 def handle_ui_error(func):
     """Decorator to handle errors in UI callbacks and enforce permissions."""
@@ -14,23 +16,26 @@ def handle_ui_error(func):
             return await func(*args, **kwargs)
 
         # Ignore interactions on messages authored by another bot instance
-        if interaction.message and interaction.client and interaction.client.user:
-            if interaction.message.author.id != interaction.client.user.id:
-                return
+        if (
+            interaction.message
+            and interaction.client
+            and interaction.client.user
+            and interaction.message.author.id != interaction.client.user.id
+        ):
+            return None
 
         self_obj = args[0] if args else None
         radio = getattr(self_obj, 'radio', None)
         
-        if radio and hasattr(radio, 'can_interact'):
-            if not radio.can_interact(interaction.user):
-                feedback = get_feedback('not_in_same_voice')
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(feedback, ephemeral=True)
-                else:
-                    await interaction.followup.send(feedback, ephemeral=True)
-                
-                schedule_delete(interaction, radio.config.notification_timeout)
-                return
+        if radio and hasattr(radio, 'can_interact') and not radio.can_interact(interaction.user):
+            feedback = get_feedback('not_in_same_voice')
+            if not interaction.response.is_done():
+                await interaction.response.send_message(feedback, ephemeral=True)
+            else:
+                await interaction.followup.send(feedback, ephemeral=True)
+            
+            schedule_delete(interaction, radio.config.notification_timeout)
+            return None
 
         try:
             return await func(*args, **kwargs)
@@ -38,7 +43,7 @@ def handle_ui_error(func):
             code = getattr(e, 'code', 0)
             if code in [10062, 40060]: 
                 log.debug(f"[UI] Ignored expired/acknowledged interaction error ({code}) in {func.__name__}")
-                return
+                return None
             
             log.error(f"UI Error in {func.__name__}: {e}", exc_info=True)
             await _send_error_msg(interaction)
@@ -105,11 +110,11 @@ class PaginatedView(BaseView):
     def pagination_info(self):
         return f"{t('page')} {self.current_page + 1} / {self.total_pages} ({len(self.data_list)} {t('total')})"
 
-    async def refresh_view(self, interaction: discord.Interaction):
+    async def refresh_view(self, interaction: discord.Interaction) -> None:
         """Should be overridden by subclasses to update the message with a new view instance."""
         raise NotImplementedError
 
-    async def paginate_refresh(self, interaction: discord.Interaction):
+    async def paginate_refresh(self, interaction: discord.Interaction) -> None:
         """Refresh hook invoked during page navigation (allows subclasses to reuse in-memory data)."""
         await self.refresh_view(interaction)
 

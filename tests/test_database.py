@@ -1,5 +1,6 @@
 from core.models import Song
 
+
 def test_connection_pool_reuse(test_db):
     conns = []
     for _ in range(3):

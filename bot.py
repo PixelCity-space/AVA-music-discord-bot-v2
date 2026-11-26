@@ -1,14 +1,17 @@
 import asyncio
+
 import discord
 from discord.ext import commands
-from core.state import RadioManager
+
+from cogs import COGS
 from core.actions import RadioState
+from core.state import RadioManager
 from services.audio_player import RadioPlayer
+from ui.icons import Icons
 from ui.manager import UIManager
 from ui.theme import Theme
-from ui.icons import Icons
-from cogs import COGS
 from utils.logger import log
+
 
 class RadioBot(commands.Bot):
     def __init__(self, config, instance_name: str = ""):
@@ -28,7 +31,7 @@ class RadioBot(commands.Bot):
             intents=intents,
             help_command=None,
             max_messages=100,
-            member_cache_flags=discord.MemberCacheFlags.voice()
+            member_cache_flags=discord.MemberCacheFlags(voice=True, joined=False),
         )
 
         # Core State & Services

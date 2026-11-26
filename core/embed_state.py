@@ -27,11 +27,29 @@ class EmbedStateManager:
         except Exception:
             pass
 
-    def save_message_id(self, key: str, message_id: int):
-        if not message_id or not isinstance(message_id, int) or message_id <= 0:
+    def save_message_id(self, key: str, message_id: int | None):
+        state_key = f"msg_{key}"
+        if message_id is None:
+            if state_key in self.state:
+                del self.state[state_key]
+                self.save()
             return
-        self.state[f"msg_{key}"] = message_id
+        if not isinstance(message_id, int) or message_id <= 0:
+            return
+        if self.state.get(state_key) == message_id:
+            return
+        self.state[state_key] = message_id
         self.save()
+
+    def clear_message_ids(self, *keys: str):
+        changed = False
+        for key in keys:
+            state_key = f"msg_{key}"
+            if state_key in self.state:
+                del self.state[state_key]
+                changed = True
+        if changed:
+            self.save()
 
     def load_message_id(self, key: str):
         return self.state.get(f"msg_{key}")

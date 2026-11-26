@@ -18,6 +18,7 @@ class EventsCog(commands.Cog):
         self.radio = bot.radio
         self.config = bot.config
         self.ui_manager = bot.ui_manager
+        self._ready_once = False
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -26,6 +27,11 @@ class EventsCog(commands.Cog):
         log.info(f"Identity: {self.bot.user} (ID: {self.bot.user.id})")
         log.info(f"Instance: {instance_label}")
         log.info("------------------------")
+
+        if self._ready_once:
+            log.info("[GATEWAY] Reconnected (on_ready); skipping duplicate view/command sync.")
+            return
+        self._ready_once = True
 
         try:
             ctx = self.ui_manager.context

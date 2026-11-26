@@ -6,7 +6,7 @@ import asyncio
 import discord
 from ui.views.player import HelpView
 from ui.views.queue import FullQueueView
-from ui.utils import get_feedback
+from ui.utils import get_feedback, schedule_delete
 from utils.logger import log
 
 
@@ -145,7 +145,10 @@ async def handle_prefix_commands(message: discord.Message, radio):
             pass
 
     try:
-        asyncio.create_task(delayed_delete(message))
+        if hasattr(radio, "create_task"):
+            radio.create_task(delayed_delete(message), name="prefix_msg_delete")
+        else:
+            schedule_delete(message, config.command_delete_delay)
         ctx = {
             "cs": radio.command_service,
             "radio": radio,

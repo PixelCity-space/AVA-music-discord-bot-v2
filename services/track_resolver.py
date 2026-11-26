@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import os
 import re
@@ -97,19 +98,27 @@ class TrackResolverService:
                 )
         else:
             log.info(f"[SEARCH] Searching for: {query}")
-            search_results = []
+            resolved_first = None
             for p in self.providers:
-                if hasattr(p, 'search'):
+                if hasattr(p, "search_and_resolve_first"):
+                    resolved_first = await p.search_and_resolve_first(query)
+                    if resolved_first:
+                        break
+                elif hasattr(p, "search"):
                     res = await p.search(query, limit=1)
                     if res:
-                        search_results.extend(res)
-            
-            if not search_results:
+                        resolved_first = res[0]
+                        break
+
+            if not resolved_first:
                 log.warning(f"[SEARCH] No results found for: {query}")
                 return None
-            
-            song = Song.from_dict(search_results[0])
+
+            song = Song.from_dict(resolved_first)
             song.is_resolving = False
+            if song.stream_url:
+                import time
+                song.stream_resolved_at = time.monotonic()
             log.info(f"[SEARCH] Added first result: {song.title}")
 
         if user:
@@ -135,8 +144,8 @@ class TrackResolverService:
                 song.requested_by = user.display_name
             songs.append(song)
 
-        # Atomic bulk cache insertion
-        self.db.set_cache_batch(tracks_data)
+        # Atomic bulk cache insertion off the event loop
+        await asyncio.to_thread(self.db.set_cache_batch, tracks_data)
         return songs
 
     async def resolve_song(self, song: Song) -> bool:

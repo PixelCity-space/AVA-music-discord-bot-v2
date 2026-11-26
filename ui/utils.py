@@ -4,6 +4,19 @@ from ui.icons import Icons
 from ui.i18n import t
 from utils.logger import log
 
+_pending_delete_tasks: set[asyncio.Task] = set()
+
+
+def schedule_delete(item: discord.Message | discord.Interaction | None, delay: float = 20.0) -> asyncio.Task | None:
+    """Schedules delayed_delete while retaining a strong task reference until completion."""
+    if not item:
+        return None
+    task = asyncio.create_task(delayed_delete(item, delay))
+    _pending_delete_tasks.add(task)
+    task.add_done_callback(_pending_delete_tasks.discard)
+    return task
+
+
 async def delayed_delete(item: discord.Message | discord.Interaction | None, delay: float = 20.0):
     if not item:
         return
@@ -132,7 +145,7 @@ async def respond(interaction: discord.Interaction, content=None, embed=None, vi
             target = msg
             
         if delete_after:
-            asyncio.create_task(delayed_delete(target, delete_after))
+            schedule_delete(target, delete_after)
     except Exception as e:
         log.error(f"UI Respond error: {e}")
 

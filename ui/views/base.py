@@ -3,9 +3,8 @@ import traceback
 from discord.ui import LayoutView
 from ui.icons import Icons
 from ui.i18n import t
-from ui.utils import get_feedback, delayed_delete
+from ui.utils import get_feedback, schedule_delete
 from utils.logger import log
-import asyncio
 
 def handle_ui_error(func):
     """Decorator to handle errors in UI callbacks and enforce permissions."""
@@ -30,7 +29,7 @@ def handle_ui_error(func):
                 else:
                     await interaction.followup.send(feedback, ephemeral=True)
                 
-                asyncio.create_task(delayed_delete(interaction, radio.config.notification_timeout))
+                schedule_delete(interaction, radio.config.notification_timeout)
                 return
 
         try:
@@ -111,6 +110,10 @@ class PaginatedView(BaseView):
         """Should be overridden by subclasses to update the message with a new view instance."""
         raise NotImplementedError
 
+    async def paginate_refresh(self, interaction: discord.Interaction):
+        """Refresh hook invoked during page navigation (allows subclasses to reuse in-memory data)."""
+        await self.refresh_view(interaction)
+
     def build_navigation_row(self, extra_buttons: list | None = None, show_close: bool = True) -> discord.ui.ActionRow:
         """Constructs a standard pagination ActionRow with Prev, Next, optional custom buttons, and Close."""
         nav = discord.ui.ActionRow()
@@ -130,13 +133,13 @@ class PaginatedView(BaseView):
         async def prev_cb(interaction: discord.Interaction):
             await interaction.response.defer()
             self.current_page -= 1
-            await self.refresh_view(interaction)
+            await self.paginate_refresh(interaction)
 
         @handle_ui_error
         async def next_cb(interaction: discord.Interaction):
             await interaction.response.defer()
             self.current_page += 1
-            await self.refresh_view(interaction)
+            await self.paginate_refresh(interaction)
 
         prev_btn.callback = prev_cb
         next_btn.callback = next_cb

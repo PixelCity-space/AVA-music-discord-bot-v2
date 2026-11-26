@@ -1,7 +1,8 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, replace
+from typing import List, Optional
 import discord
 from core.actions import RadioAction, RadioState
+from core.models import Song
 from ui.utils import get_feedback
 
 @dataclass
@@ -87,12 +88,16 @@ class CommandService:
             return CommandResult(feedback=get_feedback("no_current_track"), success=False)
 
         try:
-            parts = time_str.split(":")
+            parts = time_str.strip().split(":")
             if len(parts) == 2:
                 minutes, seconds = map(int, parts)
+                if minutes < 0 or seconds < 0 or seconds >= 60:
+                    return CommandResult(feedback=get_feedback("format_error"), success=False)
                 total_seconds = minutes * 60 + seconds
+            elif len(parts) == 1:
+                total_seconds = int(parts[0])
             else:
-                total_seconds = int(time_str)
+                return CommandResult(feedback=get_feedback("format_error"), success=False)
         except Exception:
             return CommandResult(feedback=get_feedback("format_error"), success=False)
 
@@ -154,6 +159,30 @@ class CommandService:
 
         self.radio.dispatch(RadioAction.DISCONNECT, user=user)
         return CommandResult(feedback=get_feedback("severing"))
+
+    def enqueue_songs(self, user: discord.Member | discord.User, songs: List[Song]) -> CommandResult:
+        if not self.radio.can_interact(user):
+            return CommandResult(feedback=get_feedback("not_in_same_voice"), success=False)
+
+        if self.radio.voice_channel_id is None:
+            user_voice = getattr(user, "voice", None)
+            if not user_voice or not getattr(user_voice, "channel", None):
+                return CommandResult(feedback=get_feedback("no_permission"), success=False)
+            self.radio.dispatch(RadioAction.JOIN, user_voice.channel.id, user=user)
+
+        q_songs = [
+            replace(song, requested_by=user.display_name, _resolve_event=None)
+            for song in songs
+        ]
+        self.radio.dispatch(RadioAction.ADD_SONGS, q_songs, user=user)
+        return CommandResult(feedback=get_feedback("added_all_to_queue"))
+
+    def clear_history(self, user: discord.Member | discord.User) -> CommandResult:
+        if not self.radio.is_admin(user):
+            return CommandResult(feedback=get_feedback("admin_only"), success=False)
+
+        self.radio.dispatch(RadioAction.CLEAR_HISTORY, user=user)
+        return CommandResult(feedback=get_feedback("cleared_history"))
 
     def clear_cache(self, user: discord.Member | discord.User) -> CommandResult:
         if not self.radio.is_admin(user):

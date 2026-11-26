@@ -86,8 +86,8 @@ class AudioSourceFactory:
         
         before_opts = " ".join(before_opts_list)
         safe_volume = max(0.0, float(volume if volume is not None else 0.5))
-        filter_chain = f"volume={safe_volume}"
-        options = f'-vn -filter:a "{filter_chain}" -c:a libopus -b:a {self.config.audio_bitrate} -ar 48000 -ac 2 -f opus -threads 2'
+        filter_arg = f'-filter:a "volume={safe_volume}" ' if abs(safe_volume - 1.0) > 1e-6 else ""
+        options = f'-vn {filter_arg}-c:a libopus -b:a {self.config.audio_bitrate} -ar 48000 -ac 2 -f opus -threads 2'
         
         return discord.FFmpegOpusAudio(
             source_path,

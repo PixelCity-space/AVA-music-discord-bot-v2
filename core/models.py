@@ -1,4 +1,5 @@
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 
@@ -20,6 +21,7 @@ class Song:
     is_external: bool = False
     stream_url: Optional[str] = None
     http_headers: Optional[Dict[str, str]] = None
+    stream_resolved_at: Optional[float] = field(default=None, repr=False, compare=False)
     _resolve_event: Optional[asyncio.Event] = field(default=None, repr=False, compare=False)
 
     @property
@@ -56,13 +58,14 @@ class Song:
         """Convert back to dict."""
         d = dict(self.__dict__)
         d.pop("_resolve_event", None)
+        d.pop("stream_resolved_at", None)
         return d
     
     def update(self, data: Dict[str, Any]):
         """Update fields from a dictionary with priority mapping."""
         # 1. Direct field mapping
         for key, value in data.items():
-            if hasattr(self, key) and value is not None and key != "_resolve_event":
+            if hasattr(self, key) and value is not None and key not in ("_resolve_event", "stream_resolved_at"):
                 current = getattr(self, key)
                 is_placeholder = False
                 if isinstance(current, str):
@@ -70,6 +73,8 @@ class Song:
                 
                 if current in [None, 0] or is_placeholder or self.is_resolving or key == "stream_url":
                     setattr(self, key, value)
+                    if key == "stream_url":
+                        self.stream_resolved_at = time.monotonic()
 
         # 2. Logic-based mapping for uploader
         new_uploader = data.get("uploader") or data.get("artist") or data.get("channel")

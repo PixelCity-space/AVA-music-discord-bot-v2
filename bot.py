@@ -28,7 +28,7 @@ class RadioBot(commands.Bot):
             intents=intents,
             help_command=None,
             max_messages=100,
-            member_cache_flags=discord.MemberCacheFlags.from_intents(intents)
+            member_cache_flags=discord.MemberCacheFlags.voice()
         )
 
         # Core State & Services
@@ -69,6 +69,16 @@ class RadioBot(commands.Bot):
             
         self.bg_tasks.append(asyncio.create_task(self._embed_refresh_loop()))
         self.bg_tasks.append(asyncio.create_task(self._progress_update_loop()))
+        self.bg_tasks.append(asyncio.create_task(self._cache_cleanup_loop()))
+
+    async def _cache_cleanup_loop(self):
+        await self.wait_until_ready()
+        while not self.is_closed():
+            await asyncio.sleep(3600)
+            try:
+                await self.radio.cleanup_cache_async()
+            except Exception as e:
+                log.debug(f"[CACHE] Periodic cleanup failed: {e}")
 
     async def _embed_refresh_loop(self):
         await self.wait_until_ready()

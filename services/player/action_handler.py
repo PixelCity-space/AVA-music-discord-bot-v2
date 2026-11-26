@@ -60,19 +60,16 @@ class PlaybackActionHandler:
                 self.radio.is_seeking = True
                 self.radio.seek_position = None
         elif action == RadioAction.SKIP:
-            if self.radio.future_queue or self.radio.queue:
+            if self.radio.queue_manager.has_next():
                 self.radio.status = RadioState.PLAYING
                 return False
             return True
         elif action == RadioAction.BACK:
-            next_ptr = self.radio.history_ptr + (1 if self.radio.current_song else 0)
-            back_song = self.radio.history_manager.get_latest(offset=next_ptr)
+            back_song = self.radio.queue_manager.step_back(
+                self.radio.history_manager, self.radio.current_song, during_playback=False
+            )
             if back_song:
-                if self.radio.current_song:
-                    self.radio.future_queue.insert(0, self.radio.current_song)
                 self.radio.current_song = back_song
-                self.radio.history_ptr = next_ptr
-                self.radio.is_navigating = True
                 self.radio.is_seeking = True
                 self.radio.status = RadioState.PLAYING
                 return False
@@ -115,11 +112,7 @@ class PlaybackActionHandler:
         elif action == RadioAction.SET_VOLUME:
             log.info(f"[PLAYER] Volume changed to: {int(data*100)}%")
             self.radio.volume = data
-            if self.radio.track_start_time:
-                elapsed = (asyncio.get_event_loop().time() - self.radio.track_start_time)
-                self.radio.seek_position = self.radio.track_start_offset + elapsed
-            else:
-                self.radio.seek_position = self.radio.track_start_offset
+            self.radio.seek_position = self.radio.elapsed_seconds
             self.radio.is_seeking = True
             voice.stop()
             return True
@@ -127,8 +120,7 @@ class PlaybackActionHandler:
             if voice.is_playing():
                 log.info("[PLAYER] Pausing playback.")
                 voice.pause()
-                if self.radio.track_start_time:
-                    self.radio.track_start_offset += (asyncio.get_event_loop().time() - self.radio.track_start_time)
+                self.radio.track_start_offset = self.radio.elapsed_seconds
                 self.radio.track_start_time = None
                 self.radio.status = RadioState.PAUSED
                 await self.update_ui(song)
@@ -148,10 +140,8 @@ class PlaybackActionHandler:
                 voice.stop()
                 return True
         elif action == RadioAction.BACK:
-            elapsed = self.radio.track_start_offset
-            if self.radio.track_start_time and self.radio.status == RadioState.PLAYING:
-                elapsed += (asyncio.get_event_loop().time() - self.radio.track_start_time)
-            
+            elapsed = self.radio.elapsed_seconds
+
             if elapsed > 10.0:
                 log.info(f"[PLAYER] Restarting current track (elapsed: {int(elapsed)}s)")
                 self.radio.seek_position = 0
@@ -160,15 +150,12 @@ class PlaybackActionHandler:
                 return True
 
             log.info(f"[PLAYER] Navigating to previous track in history (elapsed: {int(elapsed)}s)")
-            next_ptr = self.radio.history_ptr + (1 if self.radio.is_navigating else 0)
-            back_song = self.radio.history_manager.get_latest(offset=next_ptr)
+            back_song = self.radio.queue_manager.step_back(
+                self.radio.history_manager, self.radio.current_song, during_playback=True
+            )
 
             if back_song:
-                if self.radio.current_song:
-                    self.radio.future_queue.insert(0, self.radio.current_song)
                 self.radio.current_song = back_song
-                self.radio.history_ptr = next_ptr
-                self.radio.is_navigating = True
                 self.radio.is_seeking = True
                 voice.stop()
                 return True

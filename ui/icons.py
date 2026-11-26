@@ -1,6 +1,7 @@
 import discord
 
 class Icons:
+    _version: int = 0
     SUCCESS: discord.PartialEmoji = None
     ADD: discord.PartialEmoji = None
     BACK: discord.PartialEmoji = None
@@ -112,6 +113,7 @@ class Icons:
         cls.PB_EMPTY = get("PB_EMPTY")
         cls.PB_RIGHT = get("PB_RIGHT")
         cls.PB_END = get("PB_END")
+        cls._version += 1
 
 class DefaultConfig:
     emojis = {}

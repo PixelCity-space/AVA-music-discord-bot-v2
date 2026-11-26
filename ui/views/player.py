@@ -1,4 +1,3 @@
-import asyncio
 import discord
 from discord.ui import (
     ActionRow, Container, Section, 
@@ -206,9 +205,7 @@ class NowPlayingView(BaseView):
         if mode_text:
             info_lines.append(f"**{t('mode_label')}:** {mode_text}")
         
-        elapsed = int(radio.track_start_offset)
-        if radio.track_start_time and radio.status == RadioState.PLAYING:
-            elapsed += int(asyncio.get_event_loop().time() - radio.track_start_time)
+        elapsed = int(radio.elapsed_seconds)
         duration = song.duration if song else 0
         
         time_readout = f"`{format_duration(elapsed)} / {format_duration(duration) if duration else t('unknown')}`"

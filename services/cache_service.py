@@ -5,33 +5,63 @@ import hashlib
 import asyncio
 import shutil
 import sys
-from typing import Optional
+from typing import Optional, Callable
 from core.models import Song
 from core.database import Database
 from utils.logger import log
 
+COMMON_AUDIO_EXTS = (".opus", ".webm", ".m4a", ".mp3", ".ogg", ".mp4", ".wav")
+
+
 class CacheService:
+    DOWNLOAD_TIMEOUT_SECONDS = 120.0
+    MAX_CONCURRENT_DOWNLOADS = 2
+
     def __init__(self, config, database: Database):
         self.config = config
         self.db = database
         self.cache_dir = os.path.join(os.getcwd(), "data", "cache")
         os.makedirs(self.cache_dir, exist_ok=True)
-        self._download_lock = asyncio.Lock()
+        self._download_semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_DOWNLOADS)
+        self._url_locks: dict[str, asyncio.Lock] = {}
+        self._in_flight: set[str] = set()
+        self._path_index: dict[str, str] = {}
+        self._ytdlp_cmd = self._resolve_ytdlp_cmd()
 
-    def _get_ytdlp_cmd(self) -> list[str]:
-        """Returns executable command for yt-dlp on Linux and Windows."""
+    def _resolve_ytdlp_cmd(self) -> list[str]:
+        """Resolves and caches executable command for yt-dlp on Linux and Windows."""
         ytdlp = getattr(self.config, 'ytdlp_path', 'yt-dlp')
-        if shutil.which(ytdlp):
+        if isinstance(ytdlp, str) and ytdlp and shutil.which(ytdlp):
             return [ytdlp]
         return [sys.executable, "-m", "yt_dlp"]
+
+    def _get_ytdlp_cmd(self) -> list[str]:
+        """Returns cached executable command for yt-dlp."""
+        return self._ytdlp_cmd
+
+    @staticmethod
+    def _hash_path(path: str) -> str:
+        return hashlib.sha1(path.encode()).hexdigest()
 
     def get_cache_path(self, song: Song) -> Optional[str]:
         """Returns the local file path if a cached file exists for this song."""
         if not song or not song.path:
             return None
-        fn_hash = hashlib.sha1(song.path.encode()).hexdigest()
+        fn_hash = self._hash_path(song.path)
+
+        indexed = self._path_index.get(fn_hash)
+        if indexed and os.path.exists(indexed):
+            return indexed
+
+        for ext in COMMON_AUDIO_EXTS:
+            candidate = os.path.join(self.cache_dir, f"{fn_hash}{ext}")
+            if os.path.exists(candidate):
+                self._path_index[fn_hash] = candidate
+                return candidate
+
         matches = glob.glob(os.path.join(self.cache_dir, f"{fn_hash}.*"))
         if matches:
+            self._path_index[fn_hash] = matches[0]
             return matches[0]
         return None
 
@@ -39,7 +69,7 @@ class CacheService:
         """Returns True if a valid local file exists for this song."""
         if not song or not song.path:
             return False
-        
+
         # Check DB first for stored local path
         cached_data = self.db.get_cache(song.path)
         if cached_data:
@@ -49,105 +79,137 @@ class CacheService:
                 song.duration = cached_data.get("duration", song.duration)
                 song.thumbnail_url = cached_data.get("thumbnail_url", song.thumbnail_url)
 
-            if cached_data.get("local_path"):
-                lp = cached_data["local_path"]
-                if os.path.exists(lp):
-                    return True
-            
-        # Fallback: Check deterministic path with any extension
+            lp = cached_data.get("local_path")
+            if lp and os.path.exists(lp):
+                self._path_index[self._hash_path(song.path)] = lp
+                return True
+
+        # Fallback: Check deterministic path with known extensions
         lp = self.get_cache_path(song)
         if lp and os.path.exists(lp):
             song.cache_to_db(self.db, local_path=lp)
             return True
-            
+
         return False
 
-    async def start_cache_download(self, song: Song):
-        """Initiates a background download of the song to the local cache."""
-        if self.is_cached(song):
+    async def start_cache_download(self, song: Song, task_creator: Optional[Callable] = None):
+        """Initiates a background download of the song to the local cache without duplicate tasks."""
+        if not song or not song.path or song.path in self._in_flight or self.is_cached(song):
             return
-            
-        asyncio.create_task(self._download_task(song))
+
+        self._in_flight.add(song.path)
+        coro = self._download_task(song)
+        if task_creator:
+            task_creator(coro, name=f"cache_dl_{self._hash_path(song.path)[:8]}")
+        else:
+            asyncio.create_task(coro)
 
     async def _download_task(self, song: Song):
-        async with self._download_lock:
-            if self.is_cached(song):
-                return
-            
-            fn_hash = hashlib.sha1(song.path.encode()).hexdigest()
-            target_path_template = os.path.join(self.cache_dir, f"{fn_hash}.%(ext)s")
-            log.info(f"[CACHE] Starting download: {song.title}")
-            
-            try:
-                cmd = [
-                    *self._get_ytdlp_cmd(),
-                    "-f", "bestaudio/best",
-                    "--no-playlist",
-                    "--no-check-certificates",
-                    "--no-update",
-                    "--extractor-args", "youtube:player_client=android,web",
-                    "-o", target_path_template,
-                    song.path
-                ]
-                
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await process.communicate()
-                
-                if process.returncode == 0:
-                    actual_path = self.get_cache_path(song)
-                    if actual_path:
-                        log.info(f"[CACHE] Download complete: {song.title} -> {actual_path}")
-                        song.cache_to_db(self.db, local_path=actual_path)
-                else:
-                    err = stderr.decode().strip()
-                    log.error(f"[CACHE] Download failed for {song.title}: {err}")
-            except Exception as e:
-                log.error(f"[CACHE] Download exception for {song.title}: {e}")
+        url_key = song.path
+        lock = self._url_locks.setdefault(url_key, asyncio.Lock())
+        process = None
+        try:
+            async with lock:
+                if self.is_cached(song):
+                    return
+
+                async with self._download_semaphore:
+                    if self.is_cached(song):
+                        return
+
+                    fn_hash = self._hash_path(song.path)
+                    target_path_template = os.path.join(self.cache_dir, f"{fn_hash}.%(ext)s")
+                    log.info(f"[CACHE] Starting download: {song.title}")
+
+                    cmd = [
+                        *self._get_ytdlp_cmd(),
+                        "-f", "bestaudio/best",
+                        "--no-playlist",
+                        "--no-check-certificates",
+                        "--no-update",
+                        "--extractor-args", "youtube:player_client=android,web",
+                        "-o", target_path_template,
+                        song.path
+                    ]
+
+                    process = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await asyncio.wait_for(
+                        process.communicate(),
+                        timeout=self.DOWNLOAD_TIMEOUT_SECONDS
+                    )
+
+                    if process.returncode == 0:
+                        actual_path = self.get_cache_path(song)
+                        if actual_path:
+                            log.info(f"[CACHE] Download complete: {song.title} -> {actual_path}")
+                            song.cache_to_db(self.db, local_path=actual_path)
+                    else:
+                        err = stderr.decode(errors="ignore").strip()
+                        log.error(f"[CACHE] Download failed for {song.title}: {err}")
+        except asyncio.TimeoutError:
+            log.error(f"[CACHE] Download timed out for {song.title}. Killing process.")
+            if process:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+        except Exception as e:
+            log.error(f"[CACHE] Download exception for {song.title}: {e}")
+        finally:
+            self._in_flight.discard(url_key)
+            if not lock.locked():
+                self._url_locks.pop(url_key, None)
+
+    async def cleanup_cache_async(self):
+        """Runs cache cleanup off the asyncio event loop."""
+        await asyncio.to_thread(self.cleanup_cache)
 
     def cleanup_cache(self):
         """Auto-cleanup of the cache based on size and expiry."""
         try:
             files = []
-            for f in os.listdir(self.cache_dir):
-                path = os.path.join(self.cache_dir, f)
-                if os.path.isfile(path):
-                    stats = os.stat(path)
-                    files.append({
-                        "path": path,
-                        "size": stats.st_size,
-                        "atime": stats.st_atime
-                    })
-            
+            with os.scandir(self.cache_dir) as entries:
+                for entry in entries:
+                    if entry.is_file():
+                        stats = entry.stat()
+                        files.append({
+                            "path": entry.path,
+                            "size": stats.st_size,
+                            "atime": stats.st_atime
+                        })
+
             if not files:
                 return
-            
+
             files.sort(key=lambda x: x["atime"])
-            
+
             now = time.time()
             expiry_seconds = self.config.cache_expiry_days * 86400
             size_limit = self.config.max_cache_size_mb * 1024 * 1024
-            
+
             total_size = sum(f["size"] for f in files)
             deleted_count = 0
-            
+
             # 1. Expiry cleanup
-            files_to_check = list(files)
-            for f in files_to_check:
+            remaining_files = []
+            for f in files:
                 if (now - f["atime"]) > expiry_seconds:
                     try:
                         os.remove(f["path"])
                         total_size -= f["size"]
-                        files.remove(f)
                         deleted_count += 1
                     except Exception as e:
                         log.warning(f"[CACHE] Could not delete expired file {f['path']}: {e}")
-            
+                        remaining_files.append(f)
+                else:
+                    remaining_files.append(f)
+
             # 2. Size cleanup (LRU)
-            for f in files:
+            for f in remaining_files:
                 if total_size <= size_limit:
                     break
                 try:
@@ -156,10 +218,11 @@ class CacheService:
                     deleted_count += 1
                 except Exception as e:
                     log.warning(f"[CACHE] Could not delete LRU file {f['path']}: {e}")
-            
+
             if deleted_count > 0:
+                self._path_index.clear()
                 log.info(f"[CACHE] Auto-cleanup: {deleted_count} files removed.")
-                
+
         except Exception as e:
             log.error(f"[CACHE] Auto-cleanup error: {e}")
 
@@ -167,12 +230,13 @@ class CacheService:
         """Deletes all files in the cache directory."""
         try:
             count = 0
-            for f in os.listdir(self.cache_dir):
-                file_path = os.path.join(self.cache_dir, f)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    count += 1
-            
+            with os.scandir(self.cache_dir) as entries:
+                for entry in entries:
+                    if entry.is_file():
+                        os.remove(entry.path)
+                        count += 1
+
+            self._path_index.clear()
             self.db.clear_cache()
             log.info(f"[CACHE] Manual cache clear: {count} files removed.")
             return count
@@ -184,8 +248,9 @@ class CacheService:
         """Deletes the local cache file for a specific song (ephemeral cache)."""
         if not song or not song.path:
             return
-        
+
         path = self.get_cache_path(song)
+        self._path_index.pop(self._hash_path(song.path), None)
         if path and os.path.exists(path):
             try:
                 os.remove(path)

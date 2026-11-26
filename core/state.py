@@ -1,11 +1,12 @@
 import asyncio
-import random
+import inspect
 import discord
 from typing import List, Optional, Callable
 from core.actions import RadioState, RadioAction, RadioActionData
 from core.models import Song
 from core.embed_state import EmbedStateManager
 from core.database import Database
+from core.queue_manager import QueueManager
 from services.favorites import FavoriteManager
 from services.history import HistoryManager
 from services.cache_service import CacheService
@@ -39,27 +40,19 @@ class RadioManager:
         self.voice: Optional[discord.VoiceClient] = None
         self.voice_channel_id: Optional[int] = None
         
-        # Playback State
+        # Playback & Queue State
         self.status = RadioState.IDLE
         self.current_song: Optional[Song] = None
-        self.queue: List[Song] = []
+        self.queue_manager = QueueManager()
         self.volume: float = config.default_volume
         self.station_message: Optional[discord.Message] = None
         self.now_playing_message: Optional[discord.Message] = None
-        
-        # Navigation State (Browser-like History)
-        self.future_queue: List[Song] = []
-        self.is_navigating: bool = False
-        self.history_ptr: int = 0
-        
+
         # UI State
         self.language: str = config.default_language
         self.is_compact: bool = (config.default_ui_mode == "compact")
         self.show_queue: bool = False
-        
-        # Modes
-        self.loop_mode: bool = False
-        self.loop_queue_mode: bool = False
+
         self.volume_muted: bool = False
         
         # Progress Tracking
@@ -70,6 +63,7 @@ class RadioManager:
         
         # Internal Queues & Locks
         self.action_queue = asyncio.Queue()
+        self._action_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
         self.last_user: Optional[discord.Member | discord.User] = None
         self.task: Optional[asyncio.Task] = None
@@ -102,8 +96,71 @@ class RadioManager:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
             self._background_tasks.clear()
         
-        # Close database connection pool
+        # Close providers (thread pools) and database connection pool
+        for provider in self.providers:
+            if hasattr(provider, "close"):
+                provider.close()
         self.db.close()
+
+    # --- Queue & Navigation delegates (backward-compatible properties) ---
+    @property
+    def queue(self) -> List[Song]:
+        return self.queue_manager.queue
+
+    @queue.setter
+    def queue(self, value: List[Song]):
+        self.queue_manager.queue = value
+
+    @property
+    def future_queue(self) -> List[Song]:
+        return self.queue_manager.future_queue
+
+    @future_queue.setter
+    def future_queue(self, value: List[Song]):
+        self.queue_manager.future_queue = value
+
+    @property
+    def is_navigating(self) -> bool:
+        return self.queue_manager.is_navigating
+
+    @is_navigating.setter
+    def is_navigating(self, value: bool):
+        self.queue_manager.is_navigating = value
+
+    @property
+    def history_ptr(self) -> int:
+        return self.queue_manager.history_ptr
+
+    @history_ptr.setter
+    def history_ptr(self, value: int):
+        self.queue_manager.history_ptr = value
+
+    @property
+    def loop_mode(self) -> bool:
+        return self.queue_manager.loop_mode
+
+    @loop_mode.setter
+    def loop_mode(self, value: bool):
+        self.queue_manager.loop_mode = value
+
+    @property
+    def loop_queue_mode(self) -> bool:
+        return self.queue_manager.loop_queue_mode
+
+    @loop_queue_mode.setter
+    def loop_queue_mode(self, value: bool):
+        self.queue_manager.loop_queue_mode = value
+
+    @property
+    def elapsed_seconds(self) -> float:
+        """Returns the current playback elapsed time in seconds."""
+        elapsed = self.track_start_offset
+        if self.track_start_time and self.status == RadioState.PLAYING:
+            try:
+                elapsed += (asyncio.get_running_loop().time() - self.track_start_time)
+            except RuntimeError:
+                pass
+        return elapsed
 
     @property
     def has_history(self) -> bool:
@@ -129,10 +186,13 @@ class RadioManager:
         return self.cache_service.get_cache_path(song)
 
     async def start_cache_download(self, song: Song):
-        await self.cache_service.start_cache_download(song)
+        await self.cache_service.start_cache_download(song, task_creator=self.create_task)
 
     def cleanup_cache(self):
         self.cache_service.cleanup_cache()
+
+    async def cleanup_cache_async(self):
+        await self.cache_service.cleanup_cache_async()
 
     def clear_cache(self) -> int:
         return self.cache_service.clear_cache()
@@ -142,7 +202,7 @@ class RadioManager:
 
     def _notify_state_change(self):
         if self.on_state_change:
-            if asyncio.iscoroutinefunction(self.on_state_change):
+            if inspect.iscoroutinefunction(self.on_state_change):
                 self.create_task(self.on_state_change(self.current_song), name="notify_state_change")
             else:
                 self.on_state_change(self.current_song)
@@ -161,6 +221,7 @@ class RadioManager:
 
         # 2. Forward audio/voice actions to AudioPlayer
         self.action_queue.put_nowait((action, data))
+        self._action_event.set()
 
     def _handle_state_action(self, action: RadioAction, data: RadioActionData, user: Optional[discord.Member | discord.User] = None) -> bool:
         """Handles non-audio state, queue, and database actions directly in RadioManager."""
@@ -171,24 +232,17 @@ class RadioManager:
             self.create_task(self._add_songs(data, user=user or self.last_user), name="add_songs")
             return True
         elif action == RadioAction.REMOVE_FROM_QUEUE:
-            if data in self.queue:
-                self.queue.remove(data)
+            self.queue_manager.remove(data)
             self._notify_state_change()
             return True
         elif action == RadioAction.CLEAR_QUEUE:
-            self.queue = []
+            self.queue_manager.clear()
             self._notify_state_change()
             return True
         elif action == RadioAction.MOVE_SONG:
             song, direction = data
-            try:
-                idx = self.queue.index(song)
-                new_idx = idx + direction
-                if 0 <= new_idx < len(self.queue):
-                    self.queue[idx], self.queue[new_idx] = self.queue[new_idx], self.queue[idx]
-                    self._notify_state_change()
-            except ValueError:
-                pass
+            if self.queue_manager.move(song, direction):
+                self._notify_state_change()
             return True
         elif action == RadioAction.TOGGLE_FAVORITE:
             user_id, song = data
@@ -201,8 +255,7 @@ class RadioManager:
             return True
         elif action == RadioAction.CLEAR_HISTORY:
             self.history_manager.clear()
-            self.history_ptr = 0
-            self.is_navigating = False
+            self.queue_manager.reset_navigation()
             self._notify_state_change()
             return True
         elif action == RadioAction.CLEAR_CACHE:
@@ -210,19 +263,15 @@ class RadioManager:
             self._notify_state_change()
             return True
         elif action == RadioAction.LOOP:
-            self.loop_mode = not self.loop_mode
-            if self.loop_mode:
-                self.loop_queue_mode = False
+            self.queue_manager.toggle_loop()
             self._notify_state_change()
             return True
         elif action == RadioAction.LOOP_QUEUE:
-            self.loop_queue_mode = not self.loop_queue_mode
-            if self.loop_queue_mode:
-                self.loop_mode = False
+            self.queue_manager.toggle_loop_queue()
             self._notify_state_change()
             return True
         elif action == RadioAction.SHUFFLE:
-            random.shuffle(self.queue)
+            self.queue_manager.shuffle()
             self._notify_state_change()
             return True
             
@@ -254,6 +303,7 @@ class RadioManager:
 
         if self.status == RadioState.IDLE and self.voice_channel_id:
             self.status = RadioState.PLAYING
+            self._action_event.set()
 
         self._notify_state_change()
 
@@ -269,6 +319,7 @@ class RadioManager:
         log.info(f"[QUEUE] Added {len(songs)} songs to queue.")
         if self.status == RadioState.IDLE and self.voice_channel_id:
             self.status = RadioState.PLAYING
+            self._action_event.set()
             
         self._notify_state_change()
 
@@ -279,8 +330,10 @@ class RadioManager:
                 self.queue.append(song)
             if self.status == RadioState.IDLE and self.voice_channel_id:
                 self.status = RadioState.PLAYING
+                self._action_event.set()
             self._notify_state_change()
 
     async def _resolve_link_task(self, song: Song):
         await self.resolver.resolve_song(song)
-        self._notify_state_change()
+        if song == self.current_song:
+            self._notify_state_change()

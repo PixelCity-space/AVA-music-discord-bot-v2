@@ -10,8 +10,8 @@ from ui.components.list_controls import (
 )
 
 class FavoritesView(PaginatedView):
-    def __init__(self, radio, user_id: str | int, page: int = 0):
-        favs = radio.fav_manager.get_favorites(user_id)
+    def __init__(self, radio, user_id: str | int, page: int = 0, data_list=None):
+        favs = data_list if data_list is not None else radio.fav_manager.get_favorites(user_id)
         super().__init__(radio, favs, items_per_page=radio.config.search_items_per_page, page=page)
         self.user_id = user_id
         
@@ -41,6 +41,10 @@ class FavoritesView(PaginatedView):
         
         self.add_item(container)
 
-    async def refresh_view(self, interaction):
-        new_view = FavoritesView(self.radio, self.user_id, page=self.current_page)
+    async def refresh_view(self, interaction, reload: bool = True):
+        cached_list = None if reload else self.data_list
+        new_view = FavoritesView(self.radio, self.user_id, page=self.current_page, data_list=cached_list)
         await interaction.edit_original_response(view=new_view)
+
+    async def paginate_refresh(self, interaction):
+        await self.refresh_view(interaction, reload=False)

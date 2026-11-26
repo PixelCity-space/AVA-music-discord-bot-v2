@@ -3,7 +3,6 @@ Interactive Discord UI buttons for playlist, queue, favorites, and history manip
 """
 
 import discord
-import asyncio
 from typing import Optional, List
 from ui.icons import Icons
 from ui.i18n import t
@@ -104,26 +103,9 @@ class AddAllFavoritesButton(discord.ui.Button):
 
     @handle_ui_error
     async def callback(self, interaction: discord.Interaction):
-        if not self.radio.can_interact(interaction.user):
-            await interaction.response.send_message(get_feedback("not_in_same_voice"), ephemeral=True)
-            return
-
         await interaction.response.defer(ephemeral=True)
-        
-        q_songs = []
-        for song in self.songs:
-            q_song = Song.from_dict(song.to_dict())
-            q_song.requested_by = interaction.user.display_name
-            q_songs.append(q_song)
-        
-        if self.radio.voice_channel_id is None:
-            if not interaction.user.voice:
-                await interaction.followup.send(get_feedback("no_permission"), ephemeral=True)
-                return
-            self.radio.dispatch(RadioAction.JOIN, interaction.user.voice.channel.id, user=interaction.user)
-
-        self.radio.dispatch(RadioAction.ADD_SONGS, q_songs, user=interaction.user)
-        await respond(interaction, get_feedback('added_all_to_queue'), delete_after=self.radio.config.notification_timeout)
+        res = self.radio.command_service.enqueue_songs(interaction.user, self.songs)
+        await respond(interaction, res.feedback, delete_after=self.radio.config.notification_timeout)
 
 class ClearFavoritesButton(discord.ui.Button):
     """Button to purge all tracks from user's favorites list."""
@@ -176,18 +158,18 @@ class ClearHistoryButton(discord.ui.Button):
 
     @handle_ui_error
     async def callback(self, interaction: discord.Interaction):
-        if not self.radio.is_admin(interaction.user):
-            await interaction.response.send_message(get_feedback("admin_only"), ephemeral=True)
+        res = self.radio.command_service.clear_history(interaction.user)
+        if not res.success:
+            await respond(interaction, res.feedback, delete_after=self.radio.config.notification_timeout)
             return
 
-        self.radio.dispatch(RadioAction.CLEAR_HISTORY, user=interaction.user)
         await interaction.response.defer()
         if hasattr(self.view, 'refresh_view'):
             self.view.current_page = 0
             self.view.data_list = []
             await self.view.refresh_view(interaction)
-        
-        await respond(interaction, get_feedback("cleared_history"), delete_after=self.radio.config.notification_timeout)
+
+        await respond(interaction, res.feedback, delete_after=self.radio.config.notification_timeout)
 
 class QueueViewButton(discord.ui.Button):
     """Button to open the full paginated queue view."""
@@ -247,7 +229,6 @@ class MoveUpButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         self.radio.dispatch(RadioAction.MOVE_SONG, (self.song, -1), user=interaction.user)
-        await asyncio.sleep(0.1)
         if hasattr(self.view, 'refresh_view'):
             await self.view.refresh_view(interaction)
 
@@ -262,6 +243,5 @@ class MoveDownButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         self.radio.dispatch(RadioAction.MOVE_SONG, (self.song, 1), user=interaction.user)
-        await asyncio.sleep(0.1)
         if hasattr(self.view, 'refresh_view'):
             await self.view.refresh_view(interaction)

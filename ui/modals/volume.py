@@ -4,7 +4,6 @@ from ui.icons import Icons
 from ui.i18n import t
 from ui.utils import respond, get_feedback
 from ui.views.base import handle_ui_error
-from core.actions import RadioAction
 
 class VolumeButton(discord.ui.Button):
     def __init__(self, radio):
@@ -38,11 +37,9 @@ class VolumeModal(Modal):
     async def on_submit(self, interaction: discord.Interaction):
         try:
             value = int(self.volume_input.value)
-            if 0 <= value <= 100:
-                self.radio.dispatch(RadioAction.SET_VOLUME, value / 100, user=interaction.user)
-                feedback = f"{get_feedback('vol_set')} {value}%"
-                await respond(interaction, feedback, delete_after=self.radio.config.notification_timeout)
-            else:
-                await respond(interaction, get_feedback("vol_range_error"), delete_after=self.radio.config.notification_timeout)
         except Exception:
             await respond(interaction, get_feedback("invalid_number"), delete_after=self.radio.config.notification_timeout)
+            return
+
+        res = self.radio.command_service.volume(interaction.user, value)
+        await respond(interaction, res.feedback, delete_after=self.radio.config.notification_timeout)

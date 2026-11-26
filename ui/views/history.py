@@ -6,8 +6,11 @@ from ui.components.list_controls import SearchResultAddButton, FavoriteListButto
 from core.models import Song
 
 class HistoryView(PaginatedView):
-    def __init__(self, radio, page: int = 0, user=None):
-        history = [Song.from_dict(r) if isinstance(r, dict) else r for r in radio.history]
+    def __init__(self, radio, page: int = 0, user=None, data_list=None):
+        if data_list is not None:
+            history = data_list
+        else:
+            history = [Song.from_dict(r) if isinstance(r, dict) else r for r in radio.history]
         super().__init__(radio, history, items_per_page=radio.config.search_items_per_page, page=page)
         self.radio = radio
         self.user = user
@@ -41,6 +44,10 @@ class HistoryView(PaginatedView):
         
         self.add_item(container)
 
-    async def refresh_view(self, interaction):
-        new_view = HistoryView(self.radio, page=self.current_page, user=self.user)
+    async def refresh_view(self, interaction, reload: bool = True):
+        cached_list = None if reload else self.data_list
+        new_view = HistoryView(self.radio, page=self.current_page, user=self.user, data_list=cached_list)
         await interaction.edit_original_response(view=new_view)
+
+    async def paginate_refresh(self, interaction):
+        await self.refresh_view(interaction, reload=False)

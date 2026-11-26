@@ -349,15 +349,11 @@ async def test_scenario_19_stream_url_rate_limit_429():
     from providers.ytdlp_provider import YTDLPProvider
     provider = YTDLPProvider()
 
-    # Simulate subprocess communication returning 429 error
-    with patch("asyncio.create_subprocess_exec") as mock_exec:
-        proc = AsyncMock()
-        proc.communicate.return_value = (b"", b"HTTP Error 429: Too Many Requests")
-        proc.returncode = 1
-        mock_exec.return_value = proc
-
+    # Simulate YoutubeDL extract_info raising HTTP 429 error
+    with patch.object(provider, "_extract_info_sync", side_effect=RuntimeError("HTTP Error 429: Too Many Requests")):
         result = await provider.resolve("https://youtube.com/watch?v=rate_limited")
         assert result is None
+    provider.close()
 
 
 def test_scenario_20_livestream_progress_bar_zero_duration():

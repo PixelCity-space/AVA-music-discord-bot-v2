@@ -25,15 +25,21 @@ class PrefetchService:
         """Starts a background prefetch task for the next song."""
         if not next_song or self.prefetched_song == next_song:
             return
-            
+
         self.prefetched_song = next_song
-        self.prefetch_task = asyncio.create_task(self._prefetch_next_track(next_song))
+        if hasattr(self.radio, "create_task"):
+            self.prefetch_task = self.radio.create_task(
+                self._prefetch_next_track(next_song),
+                name=f"prefetch_{next_song.title or next_song.path}"
+            )
+        else:
+            self.prefetch_task = asyncio.create_task(self._prefetch_next_track(next_song))
 
     async def _prefetch_next_track(self, song: Song):
-        """Pre-resolves stream URL and downloads audio for upcoming track in background."""
+        """Pre-resolves stream URL and optionally downloads audio for upcoming track in background."""
         if not song or self.radio.is_cached(song):
             return
-            
+
         try:
             log.info(f"[PREFETCH] Pre-buffering next track: {song.title or song.path}")
             if song.is_external and not song.stream_url and not song.is_resolving:
@@ -43,8 +49,8 @@ class PrefetchService:
                     song.update(resolved)
                     song.cache_to_db(self.radio.db)
                     log.info(f"[PREFETCH] Stream URL resolved ahead of time for: {song.title}")
-            
-            if song.is_external and not self.radio.is_cached(song):
+
+            if not self.radio.config.ephemeral_cache and song.is_external and not self.radio.is_cached(song):
                 await self.radio.start_cache_download(song)
         except Exception as e:
             log.warning(f"[PREFETCH] Error pre-buffering {song.title or song.path}: {e}")

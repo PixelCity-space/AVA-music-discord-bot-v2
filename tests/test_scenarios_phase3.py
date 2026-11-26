@@ -245,57 +245,52 @@ def test_scenario_15_db_clear_favorites_nonexistent_user(test_db):
 async def test_scenario_16_ytdlp_resolve_livestream_none_duration():
     """Scenario 16: Resolving a livestream probe where yt-dlp returns duration: null."""
     provider = YTDLPProvider()
-    mock_process = AsyncMock()
-    mock_process.returncode = 0
-    mock_json = '{"title": "Live Stream", "url": "https://live.m3u8", "duration": null}'
-    mock_process.communicate.return_value = (mock_json.encode("utf-8"), b"")
+    mock_info = {"title": "Live Stream", "url": "https://live.m3u8", "duration": None}
 
-    with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+    with patch.object(provider, "_extract_info_sync", return_value=mock_info):
         res = await provider.resolve("https://youtube.com/watch?v=live123")
-        # Stress test: duration: null in JSON should resolve cleanly with duration=0 instead of throwing TypeError
         assert res is not None, "Livestream resolution failed because duration was None!"
         assert res["duration"] == 0
+    provider.close()
 
 
 @pytest.mark.asyncio
 async def test_scenario_17_ytdlp_resolve_playlist_entry_with_none_duration():
     """Scenario 17: Playlist resolving containing an entry with duration: null."""
     provider = YTDLPProvider()
-    mock_process = AsyncMock()
-    mock_process.returncode = 0
-    lines = [
-        '{"title": "Track 1", "url": "http://track1", "duration": 120}',
-        '{"title": "Live Premiere 2", "url": "http://track2", "duration": null}'
-    ]
-    mock_process.communicate.return_value = ("\n".join(lines).encode("utf-8"), b"")
+    mock_info = {
+        "entries": [
+            {"title": "Track 1", "url": "http://track1", "duration": 120},
+            {"title": "Live Premiere 2", "url": "http://track2", "duration": None},
+        ]
+    }
 
-    with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+    with patch.object(provider, "_extract_info_sync", return_value=mock_info):
         results = await provider.resolve_playlist("http://playlist_url")
-        # Stress test: The live premiere should not be silently dropped from the playlist
         assert len(results) == 2, f"Expected 2 tracks from playlist, but got {len(results)}! Track with duration=None was dropped."
+    provider.close()
 
 
 @pytest.mark.asyncio
 async def test_scenario_18_ytdlp_search_result_with_none_duration():
     """Scenario 18: Search result containing an entry with duration: null."""
     provider = YTDLPProvider()
-    mock_process = AsyncMock()
-    mock_process.returncode = 0
-    lines = [
-        '{"title": "Live Broadcast", "url": "http://live", "duration": null}'
-    ]
-    mock_process.communicate.return_value = ("\n".join(lines).encode("utf-8"), b"")
+    mock_info = {
+        "entries": [
+            {"title": "Live Broadcast", "url": "http://live", "duration": None}
+        ]
+    }
 
-    with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+    with patch.object(provider, "_extract_info_sync", return_value=mock_info):
         results = await provider.search("live concert")
-        # Stress test: Search result with duration: null should not be discarded
         assert len(results) == 1, f"Expected 1 search result, but got {len(results)}! Result was dropped."
+    provider.close()
 
 
 @pytest.mark.asyncio
 async def test_scenario_19_ytdlp_error_probing_binary_undecodable_stderr():
     """Scenario 19: Non-zero exit code with non-UTF8 binary stderr output."""
-    provider = YTDLPProvider()
+    provider = YTDLPProvider(use_subprocess=True)
     mock_process = AsyncMock()
     mock_process.returncode = 1
     mock_process.communicate.return_value = (b"", b"\xff\xfe\xfd Error message")
@@ -303,19 +298,22 @@ async def test_scenario_19_ytdlp_error_probing_binary_undecodable_stderr():
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         res = await provider.resolve("https://youtube.com/watch?v=bad")
         assert res is None
+    provider.close()
 
 
 @pytest.mark.asyncio
 async def test_scenario_20_ytdlp_timeout_kills_process():
     """Scenario 20: Subprocess resolution timeout kills the hung process."""
-    provider = YTDLPProvider()
+    provider = YTDLPProvider(use_subprocess=True)
     mock_process = AsyncMock()
+    mock_process.kill = MagicMock()
     mock_process.communicate.side_effect = asyncio.TimeoutError()
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         res = await provider.resolve("https://youtube.com/watch?v=hang")
         assert res is None
         mock_process.kill.assert_called_once()
+    provider.close()
 
 
 # =====================================================================

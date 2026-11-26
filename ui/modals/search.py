@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord.ui import Modal, TextInput
 from ui.icons import Icons
@@ -56,10 +57,9 @@ class SearchModal(Modal):
             return
 
         log.info(f"[SEARCH] Found {len(results)} results for: {query}")
-        
-        for song in results:
-            song.cache_to_db(self.radio.db)
-            
+
+        await asyncio.to_thread(self.radio.db.set_cache_batch, [song.to_dict() for song in results])
+
         view = SearchResultsView(self.radio, results, query=query, user=interaction.user)
         await interaction.followup.send(view=view, ephemeral=True)
         await safe_delete_message(msg)

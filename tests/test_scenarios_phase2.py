@@ -441,7 +441,7 @@ def test_scenario_27_ffmpeg_reconnect_options_only_for_urls(test_radio):
 @pytest.mark.asyncio
 async def test_scenario_28_ytdlp_malformed_json_handled():
     """Scenario 28: yt-dlp probe returns corrupted or unparseable JSON on stdout."""
-    provider = YTDLPProvider()
+    provider = YTDLPProvider(use_subprocess=True)
 
     with patch("asyncio.create_subprocess_exec") as mock_exec:
         proc = AsyncMock()
@@ -451,6 +451,7 @@ async def test_scenario_28_ytdlp_malformed_json_handled():
 
         result = await provider.resolve("https://youtube.com/watch?v=corrupted")
         assert result is None
+    provider.close()
 
 
 # =====================================================================

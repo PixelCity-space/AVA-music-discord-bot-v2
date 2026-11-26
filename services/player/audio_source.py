@@ -18,10 +18,13 @@ class AudioSourceFactory:
     async def resolve_source(self, song: Song, update_ui_callback: Optional[Callable] = None) -> Optional[str]:
         """Resolves the audio source path or stream URL for a given song."""
         if os.path.exists(song.path):
+            log.debug(f"[PLAYER] Using local file source for: {song.title or song.path}")
             return song.path
 
         if self.radio.is_cached(song):
-            return self.radio.get_cache_path(song)
+            cache_path = self.radio.get_cache_path(song)
+            log.debug(f"[PLAYER] Using cached file source for: {song.title or song.path} -> {cache_path}")
+            return cache_path
 
         if song.stream_url and not song.is_resolving:
             log.info(f"[PLAYER] Using pre-buffered stream URL for: {song.title}")
@@ -35,7 +38,9 @@ class AudioSourceFactory:
                 log.warning(f"[PLAYER] Resolution timed out for: {song.title}")
 
         if self.radio.is_cached(song):
-            return self.radio.get_cache_path(song)
+            cache_path = self.radio.get_cache_path(song)
+            log.debug(f"[PLAYER] Using post-wait cached file for: {song.title or song.path} -> {cache_path}")
+            return cache_path
 
         source_path = song.path
         if song.is_external:
@@ -47,9 +52,12 @@ class AudioSourceFactory:
                 if resolved:
                     song.update(resolved)
                     song.cache_to_db(self.radio.db)
+                else:
+                    log.warning(f"[PLAYER] Provider resolution returned None for: {source_path}")
             
             if song.stream_url:
                 return song.stream_url
+            log.warning(f"[PLAYER] External track resolved without stream_url: {source_path}")
             return None
         return source_path
 
@@ -88,7 +96,11 @@ class AudioSourceFactory:
         safe_volume = max(0.0, float(volume if volume is not None else 0.5))
         filter_arg = f'-filter:a "volume={safe_volume}" ' if abs(safe_volume - 1.0) > 1e-6 else ""
         options = f'-vn {filter_arg}-c:a libopus -b:a {self.config.audio_bitrate} -ar 48000 -ac 2 -f opus -threads 2'
-        
+        log.debug(
+            f"[PLAYER] Creating FFmpeg source for '{song.title if song else source_path}': "
+            f"before_options={before_opts!r}, options={options!r}"
+        )
+
         return discord.FFmpegOpusAudio(
             source_path,
             executable=self.config.ffmpeg_path,

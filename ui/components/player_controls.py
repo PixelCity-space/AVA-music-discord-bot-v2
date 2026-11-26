@@ -5,7 +5,8 @@ Interactive Discord UI controls for playback orchestration (buttons, selects, st
 import discord
 from ui.icons import Icons
 from ui.i18n import t
-from ui.utils import respond, get_feedback
+from ui.feedback import get_feedback
+from ui.utils import respond
 from ui.views.base import handle_ui_error
 from core.actions import RadioAction, RadioState
 from core.models import Song
@@ -236,6 +237,6 @@ class HelpButton(discord.ui.Button):
 
     @handle_ui_error
     async def callback(self, interaction: discord.Interaction):
-        from ui.views.player import HelpView
+        from ui.views.help import HelpView
         view = HelpView(self.radio)
         await respond(interaction, embed=view.get_embed())

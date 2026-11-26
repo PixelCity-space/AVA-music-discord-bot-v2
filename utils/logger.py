@@ -3,6 +3,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import sys
+import threading
 from colorama import init, Fore, Style
 
 # Ensure standard console streams handle UTF-8 cleanly on Windows without charmap encoding errors
@@ -57,14 +58,20 @@ def setup_logging(
     discord_level = logging.INFO if level <= logging.INFO else level
     discord_log.setLevel(discord_level)
 
+    asyncio_log = logging.getLogger("asyncio")
+    asyncio_log.propagate = False
+    asyncio_log.setLevel(logging.DEBUG if level == logging.DEBUG else logging.WARNING)
+
     # Cleanly remove and close existing handlers to avoid duplicates or leaks
-    for logger in (log, discord_log):
+    for logger in (log, discord_log, asyncio_log):
         for h in list(logger.handlers):
             logger.removeHandler(h)
             try:
                 h.close()
             except Exception:
                 pass
+
+    inst_tag = f"[{inst}] " if inst else ""
 
     # Rotating File Handler
     if not os.getenv("MANAGED_LOGGING"):
@@ -74,15 +81,30 @@ def setup_logging(
             backupCount=backup_count, 
             encoding="utf-8"
         )
-        file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        file_handler.setFormatter(logging.Formatter(f"%(asctime)s {inst_tag}[%(levelname)s] %(message)s"))
         log.addHandler(file_handler)
 
     # Console Handler
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(ColoredFormatter("%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S"))
+    console_handler.setFormatter(ColoredFormatter(f"%(asctime)s {inst_tag}[%(levelname)s] %(message)s", "%H:%M:%S"))
     log.addHandler(console_handler)
 
-    # Route discord logger events to the same handlers
+    # Route discord and asyncio logger events to the same handlers
     for h in log.handlers:
         discord_log.addHandler(h)
+        asyncio_log.addHandler(h)
+
+
+def install_exception_hooks():
+    """Routes uncaught thread exceptions into the RadioBot logger."""
+    def _thread_excepthook(args: threading.ExceptHookArgs):
+        if issubclass(args.exc_type, SystemExit):
+            return
+        thread_name = args.thread.name if args.thread else "unknown"
+        log.critical(
+            f"[THREAD] Unhandled exception in thread '{thread_name}': {args.exc_value}",
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+
+    threading.excepthook = _thread_excepthook
 

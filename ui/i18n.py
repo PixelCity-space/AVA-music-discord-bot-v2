@@ -2,6 +2,7 @@ import json
 import os
 import re
 from ui.icons import Icons
+from utils.logger import log
 
 _translations_cache = {}
 _resolved_cache: dict[tuple[str, str, int], dict] = {}
@@ -35,7 +36,7 @@ def load_locales_for_instance(instance_name: str = "") -> dict:
                 with open(os.path.join(locales_path, filename), "r", encoding="utf-8") as f:
                     trans[lang_code] = json.load(f)
             except Exception as e:
-                print(f"Error loading base locale {filename}: {e}")
+                log.error(f"[I18N] Error loading base locale {filename}: {e}", exc_info=True)
 
     # 2. Instance-specific overrides (e.g. hu_1.json, hu_2.json)
     inst = instance_name or os.environ.get("INSTANCE_NAME", "")
@@ -49,7 +50,7 @@ def load_locales_for_instance(instance_name: str = "") -> dict:
                             overrides = json.load(f)
                             trans[lang_code].update(overrides)
                     except Exception as e:
-                        print(f"Error loading instance override {filename}: {e}")
+                        log.error(f"[I18N] Error loading instance override {filename}: {e}", exc_info=True)
     return trans
 
 
@@ -110,7 +111,7 @@ def t(key: str, radio=None, **kwargs) -> str:
     if kwargs and isinstance(text, str):
         try:
             text = text.format(**kwargs)
-        except Exception:
-            pass
+        except (KeyError, ValueError, IndexError) as e:
+            log.warning(f"[I18N] Failed formatting translation key '{key}' (lang={lang}): {e}")
 
     return text

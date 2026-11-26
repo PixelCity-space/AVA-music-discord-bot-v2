@@ -1,6 +1,5 @@
 import time
 import asyncio
-import traceback
 import discord
 from typing import Optional, Callable, TYPE_CHECKING
 from core.actions import RadioState
@@ -40,7 +39,6 @@ class RadioPlayer:
         self.prefetcher = PrefetchService(radio)
         self.action_handler = PlaybackActionHandler(bot, radio, self.voice_manager, update_ui_callback)
 
-        self.last_cache_cleanup = 0.0
         self.radio.on_state_change = self.update_ui
 
     async def ensure_voice(self) -> Optional[discord.VoiceClient]:
@@ -72,21 +70,14 @@ class RadioPlayer:
                 # 4. State: PLAYING (Song Selection & Start)
                 if self.radio.status == RadioState.PLAYING:
                     await self._start_playback(voice)
+                    if self.radio.status == RadioState.PLAYING:
+                        continue
 
-                # 5. Periodic cache cleanup off the event loop
-                if time.time() - self.last_cache_cleanup > 3600:
-                    if hasattr(self.radio, "cleanup_cache_async"):
-                        await self.radio.cleanup_cache_async()
-                    else:
-                        self.radio.cleanup_cache()
-                    self.last_cache_cleanup = time.time()
-
-                # 6. Safety sleep to prevent busy-waiting
+                # 5. Safety sleep to prevent busy-waiting when idle/paused/stopped
                 await asyncio.sleep(self.config.player_loop_sleep)
 
             except Exception as e:
-                log.error(f"Player crash: {e}")
-                log.error(traceback.format_exc())
+                log.error(f"Player crash: {e}", exc_info=True)
                 await asyncio.sleep(self.config.error_retry_seconds)
 
     async def _wait_for_action_or_wake(self, timeout: float):
@@ -119,7 +110,7 @@ class RadioPlayer:
         except asyncio.TimeoutError:
             pass
         except Exception as e:
-            log.error(f"[PLAYER] Error in disconnected state handler: {e}")
+            log.error(f"[PLAYER] Error in disconnected state handler: {e}", exc_info=True)
 
     async def _handle_idle_state(self, voice: discord.VoiceClient) -> bool:
         """Logic when voice is connected but nothing is playing."""
@@ -169,7 +160,12 @@ class RadioPlayer:
         song = self.radio.current_song
         self.radio.status = RadioState.BUFFERING
         # Run BUFFERING UI update concurrently with source resolution so playback starts faster
-        buffering_ui_task = asyncio.create_task(self.update_ui(song))
+        create_task = getattr(self.radio, "create_task", None)
+        buffering_ui_task = (
+            create_task(self.update_ui(song), name="ui_buffering")
+            if create_task
+            else asyncio.create_task(self.update_ui(song))
+        )
 
         if self.radio.is_seeking and song and song.is_external and self._is_stream_url_stale(song):
             log.info(f"[PLAYER] Re-resolving stale stream for: {song.title}")
@@ -201,11 +197,13 @@ class RadioPlayer:
         self.radio.seek_position = None
 
         done = asyncio.Event()
+        playback_error: list[Exception] = []
 
         def after_playing(error):
             if error:
                 err_msg = str(error)
                 if "read of closed file" not in err_msg.lower():
+                    playback_error.append(error)
                     log.error(f"[PLAYER] Playback error: {error}")
                 else:
                     log.debug(f"[PLAYER] Suppressed noise: {err_msg}")
@@ -228,13 +226,18 @@ class RadioPlayer:
 
         voice.play(audio_source, after=after_playing)
         log.info(f"[PLAYER] Started playing: {song.uploader} - {song.title} ({song.duration}s)")
-        playing_ui_task = asyncio.create_task(self.update_ui(song))
+        playing_ui_task = (
+            create_task(self.update_ui(song), name="ui_playing")
+            if create_task
+            else asyncio.create_task(self.update_ui(song))
+        )
 
         # 4. Monitor playback and action queue
-        await self._playback_monitor_loop(voice, song, done)
-
-        if not playing_ui_task.done():
-            await playing_ui_task
+        try:
+            await self._playback_monitor_loop(voice, song, done)
+        finally:
+            if not playing_ui_task.done():
+                await asyncio.gather(playing_ui_task, return_exceptions=True)
 
         try:
             await asyncio.wait_for(done.wait(), timeout=3.0)
@@ -243,6 +246,8 @@ class RadioPlayer:
 
         if not done.is_set():
             log.info(f"[PLAYER] Monitor loop broke or timed out: {song.title}")
+        elif playback_error:
+            log.warning(f"[PLAYER] Track ended due to playback error: {song.title} ({playback_error[0]})")
         else:
             log.info(f"[PLAYER] Track finished normally: {song.title}")
 
@@ -295,16 +300,31 @@ class RadioPlayer:
                         self.prefetcher.trigger_prefetch(next_song)
 
                 if action_event is not None:
-                    done_task = asyncio.create_task(done.wait())
-                    action_wait_task = asyncio.create_task(action_event.wait())
-                    _, pending = await asyncio.wait(
-                        [done_task, action_wait_task],
-                        return_when=asyncio.FIRST_COMPLETED,
-                        timeout=self.config.action_timeout
-                    )
-                    for task in pending:
-                        task.cancel()
+                    await self._wait_for_done_or_action(done, action_event)
                 else:
                     await asyncio.wait_for(done.wait(), timeout=self.config.action_timeout)
             except asyncio.TimeoutError:
                 continue
+
+    async def _wait_for_done_or_action(self, done: asyncio.Event, action_event: asyncio.Event):
+        """Waits until either playback finishes or an action wakes the loop, cleanly draining cancelled waiters."""
+        if done.is_set() or action_event.is_set() or not self.radio.action_queue.empty():
+            return
+        done_task = asyncio.create_task(done.wait())
+        action_wait_task = asyncio.create_task(action_event.wait())
+        try:
+            _, pending = await asyncio.wait(
+                [done_task, action_wait_task],
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=self.config.action_timeout,
+            )
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+        except asyncio.CancelledError:
+            for task in (done_task, action_wait_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(done_task, action_wait_task, return_exceptions=True)
+            raise

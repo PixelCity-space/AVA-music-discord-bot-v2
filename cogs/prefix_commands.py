@@ -4,9 +4,10 @@ Prefix-based text command dispatcher and handlers using Command Registry Pattern
 
 import asyncio
 import discord
-from ui.views.player import HelpView
+from ui.feedback import get_feedback
+from ui.views.help import HelpView
 from ui.views.queue import FullQueueView
-from ui.utils import get_feedback, schedule_delete
+from ui.utils import schedule_delete
 from utils.logger import log
 
 
@@ -42,10 +43,11 @@ async def _cmd_volume(ctx):
         return
     try:
         vol = int(ctx["args"][0])
-        res = ctx["cs"].volume(ctx["author"], vol)
-        await ctx["chan"].send(f"{ctx['author'].mention} {res.feedback}", delete_after=ctx["timeout"])
-    except Exception:
+    except ValueError:
         await ctx["chan"].send(f"{ctx['author'].mention} {get_feedback('invalid_number')}", delete_after=ctx["timeout"])
+        return
+    res = ctx["cs"].volume(ctx["author"], vol)
+    await ctx["chan"].send(f"{ctx['author'].mention} {res.feedback}", delete_after=ctx["timeout"])
 
 async def _cmd_loop(ctx):
     res = ctx["cs"].loop(ctx["author"])
@@ -139,10 +141,12 @@ async def handle_prefix_commands(message: discord.Message, radio):
         await asyncio.sleep(config.command_delete_delay)
         try:
             await msg.delete()
+        except discord.NotFound:
+            pass
         except discord.Forbidden:
             log.warning(f"Could not delete message from {msg.author}: Missing 'Manage Messages' permission.")
-        except Exception:
-            pass
+        except Exception as del_err:
+            log.debug(f"[CMD] Could not delete prefix command message {getattr(msg, 'id', '?')}: {del_err}")
 
     try:
         if hasattr(radio, "create_task"):
@@ -160,4 +164,4 @@ async def handle_prefix_commands(message: discord.Message, radio):
         }
         await handler(ctx)
     except Exception as e:
-        log.error(f"Error in prefix command {command}: {e}")
+        log.error(f"Error in prefix command {command}: {e}", exc_info=True)

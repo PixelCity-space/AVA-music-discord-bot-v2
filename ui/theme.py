@@ -1,4 +1,7 @@
 
+from utils.logger import log
+
+
 class Theme:
     PRIMARY = 0x2b2d31
     SECONDARY = 0x2b2d31
@@ -25,7 +28,8 @@ class Theme:
                 if isinstance(val, int):
                     return val
                 return int(str(val), 16)
-            except Exception:
+            except Exception as e:
+                log.warning(f"[THEME] Invalid color '{val}' for '{key}', falling back to default: {e}")
                 return default
 
         cls.PRIMARY = parse_color("primary", 0x2b2d31)

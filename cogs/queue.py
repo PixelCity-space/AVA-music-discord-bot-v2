@@ -5,7 +5,8 @@ Queue and playback mode slash commands cog for RadioBot.
 import discord
 from discord import app_commands
 from cogs.base import BaseRadioCog
-from ui.utils import respond, get_feedback
+from ui.feedback import get_feedback
+from ui.utils import respond
 from ui.views.queue import FullQueueView
 
 class QueueCog(BaseRadioCog):

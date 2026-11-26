@@ -1,11 +1,12 @@
 import asyncio
+import json
 import os
 import sys
 import re
 import argparse
 import logging
 from utils.config import load_config
-from utils.logger import log, setup_logging
+from utils.logger import install_exception_hooks, log, setup_logging
 from bot import RadioBot
 
 EXIT_CODE_RESTART = 42
@@ -38,8 +39,12 @@ async def main() -> int:
             max_bytes=config.log_max_bytes, 
             backup_count=config.log_backup_count
         )
+        install_exception_hooks()
     except FileNotFoundError:
-        print(f"Error: Configuration file '{config_file}' not found.")
+        print(f"Error: Configuration file '{config_file}' not found.", file=sys.stderr)
+        return 1
+    except (ValueError, json.JSONDecodeError) as e:
+        print(f"Error: Invalid configuration in '{config_file}': {e}", file=sys.stderr)
         return 1
 
     bot = RadioBot(config, instance_name=instance_name)

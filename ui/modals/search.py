@@ -3,7 +3,8 @@ import discord
 from discord.ui import Modal, TextInput
 from ui.icons import Icons
 from ui.i18n import t
-from ui.utils import get_feedback, safe_delete_message
+from ui.feedback import get_feedback
+from ui.utils import safe_delete_message
 from ui.views.base import handle_ui_error
 from ui.views.search_results import SearchResultsView
 from core.models import Song
@@ -46,14 +47,25 @@ class SearchModal(Modal):
         log.info(f"[SEARCH] User {interaction.user.name} searched for: {query}")
         
         results = []
-        for provider in self.radio.providers:
-            if hasattr(provider, 'search'):
-                provider_results = await provider.search(query, limit=self.radio.config.search_limit)
-                results.extend([Song.from_dict(res) for res in provider_results])
-        
+        search_coros = [
+            provider.search(query, limit=self.radio.config.search_limit)
+            for provider in self.radio.providers
+            if hasattr(provider, "search")
+        ]
+        if search_coros:
+            provider_batches = await asyncio.gather(*search_coros, return_exceptions=True)
+            for batch in provider_batches:
+                if isinstance(batch, Exception):
+                    log.warning(f"[SEARCH] Provider search failed: {batch}")
+                    continue
+                results.extend([Song.from_dict(res) for res in batch])
+
         if not results:
             log.info(f"[SEARCH] No results found for: {query}")
-            await interaction.followup.send(get_feedback("empty"), ephemeral=True)
+            await asyncio.gather(
+                interaction.followup.send(get_feedback("empty"), ephemeral=True),
+                safe_delete_message(msg),
+            )
             return
 
         log.info(f"[SEARCH] Found {len(results)} results for: {query}")
@@ -61,5 +73,7 @@ class SearchModal(Modal):
         await asyncio.to_thread(self.radio.db.set_cache_batch, [song.to_dict() for song in results])
 
         view = SearchResultsView(self.radio, results, query=query, user=interaction.user)
-        await interaction.followup.send(view=view, ephemeral=True)
-        await safe_delete_message(msg)
+        await asyncio.gather(
+            interaction.followup.send(view=view, ephemeral=True),
+            safe_delete_message(msg),
+        )

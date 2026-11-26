@@ -483,5 +483,171 @@ async def test_command_service_unified_seek_enqueue_and_modals(test_radio):
     assert test_radio.command_service.clear_history(admin).success is True
 
 
+@pytest.mark.asyncio
+async def test_cache_service_index_avoids_exists_probes_and_clears_async(tmp_path, test_db):
+    mock_config = MagicMock()
+    mock_config.ytdlp_path = "yt-dlp"
+    mock_config.cache_expiry_days = 30
+    mock_config.max_cache_size_mb = 100
+
+    cs = CacheService(mock_config, test_db)
+    cs.cache_dir = str(tmp_path)
+    missing = Song(title="Missing", path="http://example.com/missing")
+
+    # Warm index for tmp_path, then ensure misses do zero os.path.exists probes
+    assert cs.get_cache_path(missing) is None
+    with patch("os.path.exists") as exists_mock:
+        assert cs.get_cache_path(missing) is None
+        exists_mock.assert_not_called()
+
+    # Add a cached file and verify clear_cache_async removes it
+    present = Song(title="Present", path="http://example.com/present")
+    h = hashlib.sha1(present.path.encode()).hexdigest()
+    fp = os.path.join(cs.cache_dir, f"{h}.opus")
+    with open(fp, "wb") as f:
+        f.write(b"audio")
+    test_db.set_cache(present.path, "Present", "Art", 60, "", local_path=fp)
+
+    removed = await cs.clear_cache_async()
+    assert removed == 1
+    assert not os.path.exists(fp)
+    assert test_db.get_cache(present.path)["local_path"] is None
+
+
+def test_repositories_true_lru_eviction(test_db):
+    from core.db.cache_repo import CacheRepository
+    from core.db.favorites_repo import FavoritesRepository
+
+    cache_repo = CacheRepository(test_db._pool, max_mem_entries=2)
+    cache_repo.set("http://a", "A", "Art", 10, "")
+    cache_repo.set("http://b", "B", "Art", 10, "")
+    # Touch http://a so http://b becomes least-recently-used
+    assert cache_repo.get("http://a") is not None
+    cache_repo.set("http://c", "C", "Art", 10, "")
+    assert "http://a" in cache_repo._mem_cache
+    assert "http://c" in cache_repo._mem_cache
+    assert "http://b" not in cache_repo._mem_cache
+
+    fav_repo = FavoritesRepository(test_db._pool, max_cached_users=2)
+    s = Song(title="F", path="http://fav")
+    fav_repo.add("u1", s)
+    fav_repo.add("u2", s)
+    assert fav_repo.is_favorite("u1", s.path) is True
+    assert fav_repo.is_favorite("u2", s.path) is True
+    # Touch u1 so u2 becomes least-recently-used
+    assert fav_repo.is_favorite("u1", s.path) is True
+    assert fav_repo.is_favorite("u3", s.path) is False
+    assert "u1" in fav_repo._fav_cache
+    assert "u3" in fav_repo._fav_cache
+    assert "u2" not in fav_repo._fav_cache
+
+
+@pytest.mark.asyncio
+async def test_ui_manager_update_progress_skips_station_presence_and_cleaner(test_radio):
+    bot = MagicMock()
+    bot.is_closed.return_value = False
+    bot.user = MagicMock(id=999)
+    channel = MagicMock()
+    player_msg = AsyncMock()
+    player_msg.id = 222
+    player_msg.author = bot.user
+    bot.get_channel.return_value = channel
+
+    ui = UIManager(bot, test_radio.config, test_radio)
+    test_radio.voice_channel_id = 333
+    test_radio.status = RadioState.PLAYING
+    test_radio.current_song = Song(title="Track", path="http://track.mp3", duration=100)
+    test_radio.now_playing_message = player_msg
+
+    with (
+        patch.object(ui.presence, "update", new=AsyncMock()) as pres_mock,
+        patch.object(ui, "_render_station_message", new=AsyncMock()) as station_mock,
+        patch.object(ui.cleaner, "schedule") as cleaner_mock,
+    ):
+        await ui.update_progress()
+        pres_mock.assert_not_awaited()
+        station_mock.assert_not_awaited()
+        cleaner_mock.assert_not_called()
+        assert player_msg.edit.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_action_handler_volume_noop_and_paused_skip_restart(test_radio):
+    from services.player.action_handler import PlaybackActionHandler
+    from services.player.voice_manager import VoiceManager
+
+    bot = MagicMock()
+    vm = VoiceManager(bot, test_radio.config, test_radio)
+    ah = PlaybackActionHandler(bot, test_radio, vm, AsyncMock())
+    voice = MagicMock()
+    voice.source = MagicMock()
+    song = Song(title="Track", path="http://track.mp3", duration=100)
+
+    test_radio.volume = 0.5
+    test_radio.status = RadioState.PLAYING
+    assert await ah.handle_playback_action(RadioAction.SET_VOLUME, 0.5, voice, song) is False
+    voice.stop.assert_not_called()
+
+    test_radio.status = RadioState.PAUSED
+    assert await ah.handle_playback_action(RadioAction.SET_VOLUME, 0.8, voice, song) is False
+    assert test_radio.volume == 0.8
+    assert test_radio.is_seeking is True
+    voice.stop.assert_not_called()
+
+
+def test_embed_state_and_safe_fetch_log_failures(tmp_path, caplog):
+    import logging
+    import discord
+    from ui.utils import safe_fetch_message
+
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text("{bad json", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="RadioBot"):
+        mgr = EmbedStateManager(str(corrupt))
+    assert mgr.state == {}
+    assert any("EMBED_STATE" in rec.message for rec in caplog.records)
+
+    # safe_fetch_message logs warning on Forbidden
+    caplog.clear()
+    channel = MagicMock()
+    channel.fetch_message = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "Missing Access"))
+    with caplog.at_level(logging.WARNING, logger="RadioBot"):
+        res = asyncio.run(safe_fetch_message(channel, 12345))
+    assert res is None
+    assert any("Missing permission to fetch message 12345" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_voice_manager_switch_channel_preserves_id_and_logs_on_fetch_error(test_radio, caplog):
+    import logging
+    from services.player.voice_manager import VoiceManager
+
+    bot = MagicMock()
+    bot.get_guild.return_value = None
+    bot.fetch_channel = AsyncMock(side_effect=RuntimeError("channel unavailable"))
+    vm = VoiceManager(bot, test_radio.config, test_radio)
+    test_radio.voice_channel_id = 111
+
+    with caplog.at_level(logging.WARNING, logger="RadioBot"):
+        switched = await vm.switch_channel(999, None)
+    assert switched is False
+    assert test_radio.voice_channel_id == 111
+    assert any("Failed to fetch target channel 999" in rec.message for rec in caplog.records)
+
+
+def test_radiobot_loop_exception_handler_logs_traceback(caplog):
+    import logging
+    from bot import RadioBot
+
+    exc = RuntimeError("detached task boom")
+    with caplog.at_level(logging.ERROR, logger="RadioBot"):
+        RadioBot._handle_loop_exception(MagicMock(), {"message": "Task failed", "exception": exc})
+
+    assert any("[ASYNCIO] Task failed: detached task boom" in rec.message for rec in caplog.records)
+
+
+
+
+
 
 

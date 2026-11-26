@@ -163,7 +163,7 @@ class TrackResolverService:
                 log.warning(f"[RESOLVER] Failed to resolve link: {song.path}")
                 return False
         except Exception as e:
-            log.error(f"[RADIO] Resolution task exception: {e}")
+            log.error(f"[RADIO] Resolution task exception: {e}", exc_info=True)
             song.title = f"⚠️ {song.path}"
             return False
         finally:

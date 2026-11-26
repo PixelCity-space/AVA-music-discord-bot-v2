@@ -4,7 +4,8 @@ Base cog module providing shared functionality and channel validation for all Ra
 
 from discord.ext import commands
 import discord
-from ui.utils import respond, get_feedback
+from ui.feedback import get_feedback
+from ui.utils import respond
 
 class BaseRadioCog(commands.Cog):
     """Base class for all RadioBot cogs with shared interaction and channel validation."""

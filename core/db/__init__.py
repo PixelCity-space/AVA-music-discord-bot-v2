@@ -1,5 +1,7 @@
+from core.db.cache_repo import CacheRepository
+from core.db.favorites_repo import FavoritesRepository
+from core.db.history_repo import HistoryRepository
 from core.db.pool import SQLiteConnectionPool, init_schema
-from core.db.repositories import CacheRepository, FavoritesRepository, HistoryRepository
 
 __all__ = [
     "SQLiteConnectionPool",

@@ -1,9 +1,9 @@
 import discord
-import traceback
 from discord.ui import LayoutView
 from ui.icons import Icons
 from ui.i18n import t
-from ui.utils import get_feedback, schedule_delete
+from ui.feedback import get_feedback
+from ui.utils import schedule_delete
 from utils.logger import log
 
 def handle_ui_error(func):
@@ -37,13 +37,13 @@ def handle_ui_error(func):
         except (discord.errors.NotFound, discord.errors.HTTPException) as e:
             code = getattr(e, 'code', 0)
             if code in [10062, 40060]: 
+                log.debug(f"[UI] Ignored expired/acknowledged interaction error ({code}) in {func.__name__}")
                 return
             
-            log.error(f"UI Error in {func.__name__}: {e}")
+            log.error(f"UI Error in {func.__name__}: {e}", exc_info=True)
             await _send_error_msg(interaction)
         except Exception as e:
-            log.error(f"UI Error in {func.__name__}: {e}")
-            traceback.print_exc()
+            log.error(f"UI Error in {func.__name__}: {e}", exc_info=True)
             await _send_error_msg(interaction)
     return wrapper
 
@@ -56,8 +56,8 @@ async def _send_error_msg(interaction):
             await interaction.response.send_message(feedback, ephemeral=True)
         else:
             await interaction.followup.send(feedback, ephemeral=True)
-    except Exception:
-        pass
+    except Exception as send_err:
+        log.debug(f"[UI] Could not send error feedback to interaction: {send_err}")
 
 class BaseView(LayoutView):
     """Base class for all Radio Bot views with shared logic."""
@@ -67,8 +67,7 @@ class BaseView(LayoutView):
         self.radio = radio
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
-        log.error(f"View Error: {error} in {item}")
-        traceback.print_exc()
+        log.error(f"View Error in {item}: {error}", exc_info=(type(error), error, error.__traceback__))
         feedback = get_feedback('error_generic')
         try:
             if not interaction.response.is_done():
@@ -78,7 +77,7 @@ class BaseView(LayoutView):
         except discord.errors.NotFound:
             log.warning(f"Could not send view error message (interaction expired): {error}")
         except Exception as e:
-            log.error(f"Error in View.on_error: {e}")
+            log.error(f"Error in View.on_error: {e}", exc_info=True)
 
 class PaginatedView(BaseView):
     """Base class for views requiring pagination."""

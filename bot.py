@@ -49,8 +49,19 @@ class RadioBot(commands.Bot):
 
         self.bg_tasks: list[asyncio.Task] = []
 
+    @staticmethod
+    def _handle_loop_exception(loop: asyncio.AbstractEventLoop, context: dict):
+        exc = context.get("exception")
+        msg = context.get("message", "Unhandled asyncio loop exception")
+        if exc:
+            log.error(f"[ASYNCIO] {msg}: {exc}", exc_info=(type(exc), exc, exc.__traceback__))
+        else:
+            log.error(f"[ASYNCIO] {msg} | context={context}")
+
     async def setup_hook(self):
         """Called automatically when bot initializes before connecting to gateway."""
+        asyncio.get_running_loop().set_exception_handler(self._handle_loop_exception)
+
         # 1. Clear old global commands from tree to avoid duplication/leakage across instances
         self.tree.clear_commands(guild=None)
 
@@ -60,16 +71,16 @@ class RadioBot(commands.Bot):
                 await self.load_extension(cog_ext)
                 log.info(f"[EXTENSION] Loaded {cog_ext}")
             except Exception as e:
-                log.error(f"[EXTENSION] Failed to load {cog_ext}: {e}")
+                log.error(f"[EXTENSION] Failed to load {cog_ext}: {e}", exc_info=True)
 
         # 3. Start background monitoring tasks
         if not self.radio.task:
-            self.radio.task = asyncio.create_task(self.player.run_loop())
+            self.radio.task = self.radio.create_task(self.player.run_loop(), name="player_run_loop")
             self.bg_tasks.append(self.radio.task)
-            
-        self.bg_tasks.append(asyncio.create_task(self._embed_refresh_loop()))
-        self.bg_tasks.append(asyncio.create_task(self._progress_update_loop()))
-        self.bg_tasks.append(asyncio.create_task(self._cache_cleanup_loop()))
+
+        self.bg_tasks.append(self.radio.create_task(self._embed_refresh_loop(), name="embed_refresh_loop"))
+        self.bg_tasks.append(self.radio.create_task(self._progress_update_loop(), name="progress_update_loop"))
+        self.bg_tasks.append(self.radio.create_task(self._cache_cleanup_loop(), name="cache_cleanup_loop"))
 
     async def _cache_cleanup_loop(self):
         await self.wait_until_ready()
@@ -77,14 +88,21 @@ class RadioBot(commands.Bot):
             await asyncio.sleep(3600)
             try:
                 await self.radio.cleanup_cache_async()
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                log.debug(f"[CACHE] Periodic cleanup failed: {e}")
+                log.error(f"[CACHE] Periodic cleanup failed: {e}", exc_info=True)
 
     async def _embed_refresh_loop(self):
         await self.wait_until_ready()
         while not self.is_closed():
             await asyncio.sleep(self.config.embed_refresh_minutes * 60)
-            await self.ui_manager.force_new_embed()
+            try:
+                await self.ui_manager.force_new_embed()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.error(f"[UI] Periodic embed refresh failed: {e}", exc_info=True)
 
     async def _progress_update_loop(self):
         await self.wait_until_ready()
@@ -93,9 +111,11 @@ class RadioBot(commands.Bot):
             # Only trigger progress UI update when actually playing
             if self.radio.status == RadioState.PLAYING and self.radio.now_playing_message:
                 try:
-                    await self.ui_manager.update_now_playing(self.radio.current_song)
+                    await self.ui_manager.update_progress()
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
-                    log.debug(f"[UI] Progress update failed: {e}")
+                    log.warning(f"[UI] Progress update failed: {e}", exc_info=True)
 
     async def close(self):
         """Graceful shutdown logic."""

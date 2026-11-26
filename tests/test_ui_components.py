@@ -1,5 +1,6 @@
 from ui.components.progress_bar import create_progress_bar
-from ui.utils import format_duration, truncate, get_feedback
+from ui.feedback import get_feedback
+from ui.utils import format_duration, truncate
 from ui.icons import Icons
 
 def test_progress_bar_zero_or_negative_total(test_radio):

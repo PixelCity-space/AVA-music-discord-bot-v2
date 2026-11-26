@@ -47,11 +47,11 @@ class YTDLPSubprocessBackend:
             if process:
                 try:
                     process.kill()
-                except Exception:
-                    pass
+                except Exception as kill_err:
+                    log.debug(f"[YT-DLP] Failed to kill timed-out subprocess: {kill_err}")
             return None
         except Exception as e:
-            log.error(f"[YT-DLP] Exception {label} {target}: {e}")
+            log.error(f"[YT-DLP] Exception {label} {target}: {e}", exc_info=True)
             return None
 
     async def extract_single(self, target: str) -> Optional[Dict[str, Any]]:

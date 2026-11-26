@@ -7,7 +7,8 @@ import discord
 import random
 from discord.ext import commands
 from core.actions import RadioState
-from ui.views.player import WelcomeLayout, FrequencyStationView, NowPlayingView
+from ui.views.player import NowPlayingView
+from ui.views.station import FrequencyStationView, WelcomeLayout
 from cogs.prefix_commands import handle_prefix_commands
 from utils.logger import log
 
@@ -23,9 +24,19 @@ class EventsCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         instance_label = self.bot.instance_name if self.bot.instance_name else 'Default'
+        providers = getattr(self.radio, "providers", []) or []
+        ytdlp_mode = next(
+            ("subprocess" if getattr(p, "_use_subprocess", False) else "in-process" for p in providers if hasattr(p, "_use_subprocess")),
+            "unknown",
+        )
         log.info("--- RADIO BOT ONLINE ---")
         log.info(f"Identity: {self.bot.user} (ID: {self.bot.user.id})")
         log.info(f"Instance: {instance_label}")
+        log.info(
+            f"[ENV] guild={self.config.guild_id}, text_ch={self.config.radio_text_channel_id}, "
+            f"ephemeral_cache={self.config.ephemeral_cache}, voice_status={self.config.update_voice_status}, "
+            f"opus_loaded={discord.opus.is_loaded()}, ffmpeg={self.config.ffmpeg_path}, ytdlp_mode={ytdlp_mode}"
+        )
         log.info("------------------------")
 
         if self._ready_once:
@@ -40,7 +51,7 @@ class EventsCog(commands.Cog):
             self.bot.add_view(NowPlayingView(self.radio, context=ctx))
             await self.ui_manager.force_new_embed()
         except Exception as e:
-            log.error(f"Error during on_ready view registration: {e}")
+            log.error(f"Error during on_ready view registration: {e}", exc_info=True)
 
         # Slash command sync
         try:
@@ -58,7 +69,7 @@ class EventsCog(commands.Cog):
                 await self.bot.tree.sync()
                 log.info("Slash commands synced globally!")
         except Exception as e:
-            log.error(f"Failed to sync commands: {e}")
+            log.error(f"Failed to sync commands: {e}", exc_info=True)
             
         # Optional Auto-Join
         if self.config.auto_join_channel_id > 0:
@@ -76,8 +87,12 @@ class EventsCog(commands.Cog):
                         self.radio.voice_channel_id = channel.id
                         self.radio.voice = channel.guild.voice_client
                         self.radio.status = RadioState.IDLE
+                    else:
+                        log.debug("[VOICE] Auto-join skipped; guild already has an active voice client.")
+                else:
+                    log.warning(f"[VOICE] Auto-join channel {self.config.auto_join_channel_id} not found or not a VoiceChannel.")
             except Exception as e:
-                log.error(f"Auto-join failed: {e}")
+                log.error(f"Auto-join failed: {e}", exc_info=True)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
@@ -90,7 +105,10 @@ class EventsCog(commands.Cog):
             
             if target_channel:
                 if old_channel and old_channel.id != target_channel.id:
+                    log.info(f"[VOICE] Bot moved from #{old_channel.name} to #{target_channel.name}")
                     await self.ui_manager.clear_voice_status(old_channel.id)
+                elif not old_channel:
+                    log.info(f"[VOICE] Bot connected to #{target_channel.name}")
                     
                 if not old_channel or old_channel.id != target_channel.id:
                     self.radio.voice_channel_id = target_channel.id

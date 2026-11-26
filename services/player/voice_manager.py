@@ -43,8 +43,8 @@ class VoiceManager:
                     log.warning(f"[VOICE] Dead voice client found for guild {guild.name}. Cleaning up.")
                     try:
                         await guild.voice_client.disconnect(force=True)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log.warning(f"[VOICE] Error disconnecting dead voice client: {e}")
                     self.radio.voice = None
 
             # Check for forbidden bots
@@ -67,17 +67,18 @@ class VoiceManager:
     async def switch_channel(self, target_channel_id: int, voice: Optional[discord.VoiceClient] = None) -> bool:
         """Switches voice channel safely."""
         if self.radio.voice_channel_id == target_channel_id:
+            log.debug(f"[VOICE] Already targeting channel {target_channel_id}; skipping switch.")
             return False
-            
-        self.radio.voice_channel_id = target_channel_id
+
         guild = self.bot.get_guild(self.config.guild_id)
         target_channel = guild.get_channel(target_channel_id) if guild else None
         if not target_channel:
             try:
                 target_channel = await self.bot.fetch_channel(target_channel_id)
-            except Exception:
-                pass
-                
+            except Exception as e:
+                log.warning(f"[VOICE] Failed to fetch target channel {target_channel_id}: {e}")
+                return False
+
         if target_channel:
             # Check for forbidden bots
             for member in target_channel.members:

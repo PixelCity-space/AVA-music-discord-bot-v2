@@ -2,7 +2,8 @@ import discord
 from discord.ui import Modal, TextInput
 from ui.icons import Icons
 from ui.i18n import t
-from ui.utils import respond, get_feedback
+from ui.feedback import get_feedback
+from ui.utils import respond
 from ui.views.base import handle_ui_error
 
 class VolumeButton(discord.ui.Button):
@@ -37,7 +38,7 @@ class VolumeModal(Modal):
     async def on_submit(self, interaction: discord.Interaction):
         try:
             value = int(self.volume_input.value)
-        except Exception:
+        except ValueError:
             await respond(interaction, get_feedback("invalid_number"), delete_after=self.radio.config.notification_timeout)
             return
 

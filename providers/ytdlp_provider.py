@@ -152,7 +152,7 @@ class YTDLPProvider(MusicProvider):
             log.error(f"[YT-DLP] {label} timed out for {target}.")
             return None
         except Exception as e:
-            log.error(f"[YT-DLP] Exception {label} {target}: {e}")
+            log.error(f"[YT-DLP] Exception {label} {target}: {e}", exc_info=True)
             return None
 
     async def resolve(self, url: str) -> Optional[Dict[str, Any]]:
@@ -177,7 +177,12 @@ class YTDLPProvider(MusicProvider):
                 "ignoreerrors": True,
             })
             info = await self._run_in_executor(url, opts, timeout=30.0, label="resolving playlist")
-            entries = [e for e in (info.get("entries") or []) if e] if info else []
+            raw_entries = (info.get("entries") or []) if info else []
+            entries = [e for e in raw_entries if e]
+            if info is None or not entries:
+                log.debug(f"[YT-DLP] Playlist returned 0 usable entries for {url}")
+            elif len(entries) < len(raw_entries):
+                log.debug(f"[YT-DLP] Filtered {len(raw_entries) - len(entries)} unavailable playlist entries for {url}")
         else:
             entries = await self._subprocess_backend.extract_playlist(url)
 
@@ -192,7 +197,10 @@ class YTDLPProvider(MusicProvider):
                 "ignoreerrors": True,
             })
             info = await self._run_in_executor(search_query, opts, timeout=15.0, label="searching")
-            entries = [e for e in (info.get("entries") or []) if e] if info else []
+            raw_entries = (info.get("entries") or []) if info else []
+            entries = [e for e in raw_entries if e]
+            if not entries:
+                log.debug(f"[YT-DLP] Search returned 0 entries for query '{query}'")
         else:
             entries = await self._subprocess_backend.search(query, limit=limit)
 

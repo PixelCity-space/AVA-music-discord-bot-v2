@@ -1,7 +1,8 @@
 from discord.ui import ActionRow, Container, TextDisplay, Separator
 from ui.i18n import t
 from ui.theme import Theme
-from ui.utils import format_duration, get_feedback, truncate
+from ui.feedback import get_feedback
+from ui.utils import format_duration, truncate
 from ui.views.base import PaginatedView
 from ui.components.list_controls import SearchResultAddButton, FavoriteListButton
 from core.models import Song

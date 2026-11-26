@@ -135,3 +135,22 @@ def test_discord_logger_integration(temp_log_dir, monkeypatch):
     assert "Shard 0 connected to Gateway" in content
     assert "Gateway connection dropped, reconnecting in 5s..." in content
     assert "\x1b" not in content
+
+
+def test_asyncio_logger_and_instance_tag(temp_log_dir, monkeypatch):
+    log_file = os.path.join(temp_log_dir, "asyncio_inst.log")
+    monkeypatch.setattr("utils.logger.os.path.abspath", lambda p: log_file)
+
+    setup_logging(level_name="INFO", instance_name="bot2")
+
+    asyncio_log = logging.getLogger("asyncio")
+    assert not asyncio_log.propagate
+    asyncio_log.warning("Task exception was never retrieved")
+
+    for h in asyncio_log.handlers:
+        h.flush()
+
+    with open(log_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    assert "[bot2] [WARNING] Task exception was never retrieved" in content

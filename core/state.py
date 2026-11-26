@@ -197,6 +197,9 @@ class RadioManager:
     def clear_cache(self) -> int:
         return self.cache_service.clear_cache()
 
+    async def clear_cache_async(self) -> int:
+        return await self.cache_service.clear_cache_async()
+
     def delete_cache_file(self, song: Song):
         self.cache_service.delete_cache_file(song)
 
@@ -277,6 +280,11 @@ class RadioManager:
             
         return False
 
+    def _wake_player_if_idle(self):
+        if self.status == RadioState.IDLE and self.voice_channel_id:
+            self.status = RadioState.PLAYING
+            self._action_event.set()
+
     async def _add_external_link(self, query: str, user: Optional[discord.Member | discord.User] = None):
         """Adds an external link or search query to queue via TrackResolverService."""
         sanitized = self.resolver.sanitize_query(query)
@@ -301,10 +309,7 @@ class RadioManager:
         if song.is_resolving:
             self.create_task(self._resolve_link_task(song), name=f"resolve_song_{song.title or song.path}")
 
-        if self.status == RadioState.IDLE and self.voice_channel_id:
-            self.status = RadioState.PLAYING
-            self._action_event.set()
-
+        self._wake_player_if_idle()
         self._notify_state_change()
 
     async def _add_songs(self, songs: List[Song], user: Optional[discord.Member | discord.User] = None):
@@ -317,23 +322,22 @@ class RadioManager:
             self.queue.append(song)
         
         log.info(f"[QUEUE] Added {len(songs)} songs to queue.")
-        if self.status == RadioState.IDLE and self.voice_channel_id:
-            self.status = RadioState.PLAYING
-            self._action_event.set()
-            
+        self._wake_player_if_idle()
         self._notify_state_change()
 
     async def _resolve_playlist_task(self, url: str, user: Optional[discord.Member | discord.User] = None):
         songs = await self.resolver.resolve_playlist(url, user=user)
-        if songs:
-            for song in songs:
-                self.queue.append(song)
-            if self.status == RadioState.IDLE and self.voice_channel_id:
-                self.status = RadioState.PLAYING
-                self._action_event.set()
-            self._notify_state_change()
+        if not songs:
+            log.debug(f"[QUEUE] Playlist resolution yielded 0 tracks for: {url}")
+            return
+        for song in songs:
+            self.queue.append(song)
+        self._wake_player_if_idle()
+        self._notify_state_change()
 
     async def _resolve_link_task(self, song: Song):
-        await self.resolver.resolve_song(song)
+        ok = await self.resolver.resolve_song(song)
         if song == self.current_song:
             self._notify_state_change()
+        elif not ok:
+            log.debug(f"[QUEUE] Background link resolution failed for queued track: {song.path}")
